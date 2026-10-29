@@ -83,16 +83,19 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
 .icon-btn:focus-visible, .btn:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .icon-btn svg { width: 22px; height: 22px; }
 
+/* three chips always fit one row, so none of them sits over the far end of the island */
 .goals { position: absolute; top: 64px; left: 16px; right: 16px; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
 .goal {
-  display: flex; align-items: center; gap: 6px; background: var(--cream); border-radius: 12px; padding: 5px 9px 5px 6px;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, .2); font-weight: 800; font-size: 12px; letter-spacing: .05em; text-transform: uppercase;
+  display: grid; grid-template-columns: 18px auto; grid-template-areas: "tgt name" "tgt meter"; column-gap: 6px; row-gap: 3px; align-items: center;
+  background: var(--cream); border-radius: 12px; padding: 5px 10px 6px 6px;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .2); font-weight: 800; font-size: 12px; line-height: 1; letter-spacing: .05em; text-transform: uppercase;
   transition: background .25s, color .25s;
 }
-.goal .tgt { width: 18px; height: 18px; border-radius: 50%; flex: none;
+.goal .tgt { grid-area: tgt; width: 18px; height: 18px; border-radius: 50%;
   background: radial-gradient(circle, var(--signal) 0 3px, var(--cream) 3.5px 5.5px, var(--signal) 6px); }
-/* how much of the objective is gone; nothing in the world numbers or names the food */
-.goal .meter { position: relative; width: 34px; height: 10px; border-radius: 5px; background: rgba(31, 39, 22, .15); box-shadow: inset 0 1.5px 0 rgba(31, 39, 22, .16); overflow: hidden; }
+.goal .name { grid-area: name; }
+/* how much of the objective is gone, under its name; nothing in the world numbers or names the food */
+.goal .meter { grid-area: meter; position: relative; min-width: 40px; height: 7px; border-radius: 4px; background: rgba(31, 39, 22, .15); box-shadow: inset 0 1.5px 0 rgba(31, 39, 22, .16); overflow: hidden; }
 .goal .meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 5px; background: var(--signal); box-shadow: inset 0 -2px 0 rgba(110, 20, 10, .25); }
 .goal.done { background: var(--leaf); color: var(--cream); }
 .goal.done .name { text-decoration: line-through; text-decoration-thickness: 2px; }
@@ -317,7 +320,8 @@ const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').mat
 const TAU = Math.PI * 2;
 const V3 = THREE.Vector3;
 const BALL_R = 1.0;
-const BALL_HOME = new V3(0, 1.45, 7.3);
+// the launcher floats in the water just off the island's front edge, close to the camera, as in Ant Swarm
+const BALL_HOME = new V3(0, 0.7, 11.2);
 const ANT_SCALE = 1.8;    // ants are drawn larger than life so swarms read on a phone
 const BALL_ANT_SCALE = 0.75;
 const FIELD = { x0: -5.8, x1: 5.8, z0: -12.4, z1: 5.2 };
@@ -342,13 +346,18 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-const SKY = 0xbfe0ea;
+// after Ant Swarm: the level is an island on calm water, and there is nothing else in the world
+const SKY = 0x7fcbe8;
 scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 34, 72);
+scene.fog = new THREE.Fog(SKY, 55, 120);
 
 const camera = new THREE.PerspectiveCamera(55, 0.46, 0.1, 200);
-const CAM_POS = new V3(0, 21, 13.8);
-const CAM_LOOK = new V3(0, 0, -3.4);
+// framed after Ant Swarm's opening view: about 48 degrees down, close in, the island's front edge two thirds of the way
+// down the screen running past both sides, its far edge just below the objective chips (so no objective hides
+// behind the HUD), the launcher low in the water
+const CAM_POS = new V3(0, 21.5, 21);
+const CAM_LOOK = new V3(0, 0, 2);
+const VIEW_HALF_W = 5.75; // half the width seen at CAM_LOOK, in metres
 camera.position.copy(CAM_POS);
 camera.lookAt(CAM_LOOK);
 
@@ -373,78 +382,52 @@ function randomDisc(out) { const a = rand() * TAU, r = Math.sqrt(rand()); return
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-// ================= ground & scenery =================
-function dirtTexture() {
-  const c = document.createElement('canvas'); c.width = 512; c.height = 768;
-  const g = c.getContext('2d'); const r = mulberry32(7);
-  g.fillStyle = '#d8bf88'; g.fillRect(0, 0, 512, 768);
-  for (let i = 0; i < 2600; i++) {
-    const s = 1 + r() * 4; g.fillStyle = r() < 0.5 ? 'rgba(150,115,60,0.18)' : 'rgba(255,240,200,0.22)';
-    g.fillRect(r() * 512, r() * 768, s, s);
-  }
-  g.strokeStyle = 'rgba(140,105,55,0.22)'; g.lineWidth = 9;
-  for (const off of [-16, 16]) { g.beginPath(); g.moveTo(256 + off, 768); g.bezierCurveTo(250 + off, 520, 120 + off, 420, 150 + off, 0); g.stroke(); }
-  for (const off of [-16, 16]) { g.beginPath(); g.moveTo(430 + off, 768); g.bezierCurveTo(400 + off, 520, 330 + off, 300, 380 + off, 0); g.stroke(); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+// ================= water, island and play surfaces =================
+// Calm, near-flat surfaces: no speckle, grain or tyre tracks, so the food is the only detail on screen.
+// The water is one flat unlit colour that matches the sky exactly, with a pale shore band round the island.
+const WATER_Y = -0.75;
+const water = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({ color: SKY, toneMapped: false }));
+water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; scene.add(water);
+// a rounded rectangle in the ground plane, w by d, centred at (0, cz)
+function roundedRectShape(w, d, r, cz) {
+  const s = new THREE.Shape(), x0 = -w / 2, x1 = w / 2, y0 = cz - d / 2, y1 = cz + d / 2;
+  s.moveTo(x0 + r, y0); s.lineTo(x1 - r, y0); s.quadraticCurveTo(x1, y0, x1, y0 + r); s.lineTo(x1, y1 - r); s.quadraticCurveTo(x1, y1, x1 - r, y1);
+  s.lineTo(x0 + r, y1); s.quadraticCurveTo(x0, y1, x0, y1 - r); s.lineTo(x0, y0 + r); s.quadraticCurveTo(x0, y0, x0 + r, y0);
+  return s;
 }
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x93c25c, roughness: 1 }));
-ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+// the island: a grass top over a thick band of orange soil, standing out of the water, with a pale shore round it
+const ISLAND = { w: 13.6, d: 19.6, cz: -3.6, r: 1.6 };
+(function island() {
+  const depth = 1.6, bevel = 0.14;
+  const geo = new THREE.ExtrudeGeometry(roundedRectShape(ISLAND.w - bevel * 2, ISLAND.d - bevel * 2, ISLAND.r, -ISLAND.cz), { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 10 });
+  geo.rotateX(-Math.PI / 2); geo.translate(0, -depth - bevel, 0);
+  const m = new THREE.Mesh(geo, [new THREE.MeshStandardMaterial({ color: 0x8fcf5a, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0xe9874a, roughness: 1 })]);
+  m.receiveShadow = true; scene.add(m);
+  const shore = new THREE.Mesh(new THREE.ShapeGeometry(roundedRectShape(ISLAND.w + 0.9, ISLAND.d + 0.9, ISLAND.r + 0.45, -ISLAND.cz), 16), new THREE.MeshBasicMaterial({ color: 0xc9eef8, toneMapped: false }));
+  shore.rotation.x = -Math.PI / 2; shore.position.y = WATER_Y + 0.01; scene.add(shore);
+})();
+// big soft gingham: two blues on cream, no speckle
 function ginghamTexture() {
   const c = document.createElement('canvas'); c.width = 512; c.height = 768;
-  const g = c.getContext('2d'); const r = mulberry32(11); const S = 28;
+  const g = c.getContext('2d'); const S = 64;
   g.fillStyle = '#f7f2e6'; g.fillRect(0, 0, 512, 768);
-  g.fillStyle = 'rgba(46, 96, 176, 0.42)';
+  g.fillStyle = 'rgba(46, 96, 176, 0.3)';
   for (let x = 0; x < 512; x += S * 2) g.fillRect(x, 0, S, 768);
   for (let y = 0; y < 768; y += S * 2) g.fillRect(0, y, 512, S);
-  for (let i = 0; i < 2600; i++) { g.fillStyle = r() < 0.5 ? 'rgba(20,40,90,0.07)' : 'rgba(255,255,255,0.14)'; g.fillRect(r() * 512, r() * 768, 1 + r() * 2, 1 + r() * 2); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 // a painted garden table, weathered to a pale blue-grey: a calm cool field, so the warm food stands off it.
-// Long planks run away from the camera, with soft grain, a few knots and dark seams.
+// Six long planks with a barely different tone each and a dark seam between them; no grain.
 function woodTexture() {
   const c = document.createElement('canvas'); c.width = 512; c.height = 768;
   const g = c.getContext('2d'); const r = mulberry32(23); const P = 512 / 6;
   for (let i = 0; i < 6; i++) {
-    const tone = 0.95 + r() * 0.1;
+    const tone = 0.97 + r() * 0.06;
     g.fillStyle = `rgb(${Math.round(170 * tone)},${Math.round(188 * tone)},${Math.round(194 * tone)})`; g.fillRect(i * P, 0, P, 768);
-    for (let k = 0; k < 18; k++) {
-      const x = i * P + 4 + r() * (P - 8), w = 0.6 + r() * 1.6;
-      g.strokeStyle = r() < 0.5 ? 'rgba(62,84,96,0.16)' : 'rgba(255,255,255,0.18)'; g.lineWidth = w;
-      g.beginPath(); g.moveTo(x, 0); g.bezierCurveTo(x + (r() - 0.5) * 14, 260, x + (r() - 0.5) * 14, 520, x + (r() - 0.5) * 8, 768); g.stroke();
-    }
-    for (let k = 0; k < 2; k++) {
-      const x = i * P + 14 + r() * (P - 28), y = r() * 768;
-      g.fillStyle = 'rgba(70,92,104,0.28)'; g.beginPath(); g.ellipse(x, y, 5 + r() * 4, 9 + r() * 6, 0, 0, TAU); g.fill();
-    }
-    g.fillStyle = 'rgba(38,52,62,0.5)'; g.fillRect(i * P - 1.5, 0, 3, 768);
+    g.fillStyle = 'rgba(38,52,62,0.4)'; g.fillRect(i * P - 1.5, 0, 3, 768);
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
-
-(function scenery() {
-  const r = mulberry32(42);
-  const trunk = new THREE.MeshStandardMaterial({ color: 0x7a5432, roughness: 1, flatShading: true });
-  const leafA = new THREE.MeshStandardMaterial({ color: 0x4f8f3a, roughness: 1, flatShading: true });
-  const leafB = new THREE.MeshStandardMaterial({ color: 0x3f7a33, roughness: 1, flatShading: true });
-  const rock = new THREE.MeshStandardMaterial({ color: 0x9a9a8c, roughness: 1, flatShading: true });
-  const tGeo = new THREE.CylinderGeometry(0.12, 0.18, 0.9, 6);
-  const cGeo = new THREE.ConeGeometry(0.9, 1.6, 7);
-  const bGeo = new THREE.IcosahedronGeometry(0.9, 0);
-  const rGeo = new THREE.DodecahedronGeometry(0.5, 0);
-  for (let i = 0; i < 70; i++) {
-    let x, z;
-    if (i < 44) { x = (r() < 0.5 ? -1 : 1) * (7.4 + r() * 9); z = -30 + r() * 44; }
-    else { x = -16 + r() * 32; z = -14.5 - r() * 18; }
-    const s = 0.8 + r() * 0.8; const g = new THREE.Group();
-    if (r() < 0.25) { const m = new THREE.Mesh(rGeo, rock); m.scale.set(s, s * 0.6, s); m.position.y = 0.15; m.rotation.y = r() * 6; m.castShadow = true; g.add(m); }
-    else {
-      const t = new THREE.Mesh(tGeo, trunk); t.position.y = 0.45; g.add(t);
-      const leaves = new THREE.Mesh(r() < 0.5 ? cGeo : bGeo, r() < 0.5 ? leafA : leafB); leaves.position.y = 1.55; leaves.castShadow = true; g.add(leaves);
-      g.scale.setScalar(s);
-    }
-    g.position.set(x, 0, z); scene.add(g);
-  }
-})();
 
 // ================= materials =================
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.82, metalness: 0, flatShading: true, ...extra });
@@ -885,7 +868,7 @@ const KINDS = {
   sandwich: { hp: 26, eggs: 6, cp: 3 }, shake: { hp: 32, eggs: 7, cp: 4 }, pizza: { hp: 40, eggs: 8, cp: 4 },
   burger: { hp: 120, eggs: 5, cp: 4, objective: 'Burger' }, melon: { hp: 260, eggs: 9, cp: 5, objective: 'Melon' }, cake: { hp: 400, eggs: 12, cp: 6, objective: 'Cake' },
   // stacked pieces; a whole stack can be one objective (the level names it)
-  // the stacked objectives (Pancakes 192, Burger 194, Layer cake 500) are a little bigger than the Picnic's,
+  // the stacked objectives (Pancakes 192, Burger 194, Cake 500) are a little bigger than the Picnic's,
   // since the towers round them hold more food than its blanket
   pancake: { hp: 24, eggs: 2, cp: 1 }, pancakeTop: { hp: 24, eggs: 2, cp: 1 },
   bunBottom: { hp: 32, eggs: 3, cp: 1 }, pattyLayer: { hp: 38, eggs: 3, cp: 2 }, cheeseSlab: { hp: 18, eggs: 2, cp: 1 },
@@ -928,7 +911,7 @@ const LEVELS = [
     layout: [],
     // stack rows: [stack, x, z, objective name]
     stacks: [
-      ['cake', 0, -10.0, 'Layer cake'], ['pancakes', -3.7, -6.1, 'Pancakes'], ['burger', 3.4, -4.9, 'Burger'],
+      ['cake', 0, -10.0, 'Cake'], ['pancakes', -3.7, -6.1, 'Pancakes'], ['burger', 3.4, -4.9, 'Burger'],
       ['jenga', -3.7, -1.1], ['pyramid', 3.7, -0.4], ['pyramid', -1.2, -8.2],
       ['donuts', 0.5, -6.6], ['donuts', -4.5, -10.4], ['donuts', 1.2, -1.6],
       ['cookies', 4.4, -9.8], ['cookies', -1.5, -3.9], ['cookies', 4.6, -2.3],
@@ -1220,77 +1203,36 @@ function heightAt(x, z) {
 
 // ================= launcher =================
 const LMAT = { dark: mat(0x4c5926), mid: mat(0x6f7f34), band: mat(0xf4b73a) }; // recoloured per world
-const launcher = new THREE.Group(); launcher.position.set(BALL_HOME.x, 0, BALL_HOME.z); scene.add(launcher);
+const launcher = new THREE.Group(); launcher.position.set(BALL_HOME.x, BALL_HOME.y - 1.45, BALL_HOME.z); scene.add(launcher);
+// a ring of pale foam where it sits in the water
+{ const f = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.6, 32), new THREE.MeshBasicMaterial({ color: 0xc9eef8, toneMapped: false })); f.rotation.x = -Math.PI / 2; f.position.set(BALL_HOME.x, WATER_Y + 0.012, BALL_HOME.z); scene.add(f); }
 add(launcher, cyl(1.0, 1.15, 0.4, 20), LMAT.dark, 0, 0.2, 0);
 add(launcher, cyl(0.84, 0.95, 0.2, 20), LMAT.mid, 0, 0.5, 0);
 add(launcher, cyl(0.86, 0.86, 0.07, 20), LMAT.band, 0, 0.58, 0);
 add(launcher, new THREE.TorusGeometry(0.62, 0.08, 8, 28), MAT.steel, 0, 0.66, 0, Math.PI / 2, 0, 0);
 for (const x of [-1.05, 1.05]) add(launcher, box(0.22, 0.5, 0.5), MAT.steelDark, x, 0.25, 0);
 
-// ================= worlds: the ground under each level =================
+// ================= worlds: the surface laid on the island for each level =================
+// Each is a calm, near-flat sheet with a darker border, inset inside the island's rounded grass edge.
+// Nothing else stands anywhere: every object in a level is food.
+function sheet(g, w, d, m, y) {
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); p.rotation.x = -Math.PI / 2; p.position.set(0, y, ISLAND.cz); p.receiveShadow = true; g.add(p);
+}
+const flatMat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 1 });
 const WORLDS = {
   base: {
     launcher: [0x4c5926, 0x6f7f34, 0xf4b73a],
-    build(g) {
-      const edge = new THREE.Mesh(new THREE.PlaneGeometry(13.3, 19.3), new THREE.MeshStandardMaterial({ color: 0xb59a64, roughness: 1 }));
-      edge.rotation.x = -Math.PI / 2; edge.position.set(0, 0.003, -3.6); edge.receiveShadow = true;
-      const pad = new THREE.Mesh(new THREE.PlaneGeometry(12.7, 18.7), new THREE.MeshStandardMaterial({ map: dirtTexture(), roughness: 1 }));
-      pad.rotation.x = -Math.PI / 2; pad.position.set(0, 0.006, -3.6); pad.receiveShadow = true;
-      g.add(edge, pad);
-    },
+    // a plain packed-sand yard
+    build(g) { sheet(g, 12.5, 18.5, flatMat(0xc2a56c), 0.003); sheet(g, 12.1, 18.1, flatMat(0xdcc38e), 0.006); },
   },
   picnic: {
     launcher: [0x8d5d2e, 0xc28a4f, 0xf7e9c8],
-    build(g) {
-      const flat = (w, d, m, y) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); p.rotation.x = -Math.PI / 2; p.position.set(0, y, -3.6); p.receiveShadow = true; g.add(p); };
-      flat(13.2, 19.2, new THREE.MeshStandardMaterial({ color: 0x2c5a9e, roughness: 1 }), 0.003);
-      flat(12.7, 18.7, new THREE.MeshStandardMaterial({ map: ginghamTexture(), roughness: 1 }), 0.006);
-      // a basket and a jug of lemonade past the far edge of the blanket
-      const wicker = mat(0xc4935a), wickerDark = mat(0x94643a), lemonade = mat(0xf7e27a, { roughness: 0.3 });
-      const basket = new THREE.Group();
-      add(basket, box(1.7, 0.85, 1.15), wicker, 0, 0.425, 0);
-      for (const y of [0.22, 0.5]) add(basket, box(1.72, 0.08, 1.17), wickerDark, 0, y, 0);
-      add(basket, box(1.78, 0.1, 1.22), wickerDark, 0, 0.88, 0);
-      add(basket, box(1.2, 0.14, 0.7), mat(0x3466b2), 0.1, 0.95, 0.1, 0.05, 0.25, 0.04);
-      add(basket, new THREE.TorusGeometry(0.62, 0.06, 6, 20, Math.PI), wickerDark, 0, 0.92, 0);
-      basket.position.set(-5.3, 0, -14.7); basket.rotation.y = 0.35; g.add(basket);
-      const jug = new THREE.Group();
-      add(jug, cyl(0.42, 0.42, 1.0, 18), lemonade, 0, 0.5, 0);
-      add(jug, cyl(0.3, 0.42, 0.18, 18), lemonade, 0, 1.09, 0);
-      add(jug, cyl(0.2, 0.2, 0.14, 14), MAT.red, 0, 1.25, 0);
-      add(jug, new THREE.TorusGeometry(0.26, 0.05, 6, 14, Math.PI), MAT.cup, 0.42, 0.55, 0, 0, 0, -Math.PI / 2);
-      jug.position.set(5.5, 0, -14.4); g.add(jug);
-      // flowers in the grass along the sides
-      const petal = new THREE.SphereGeometry(0.09, 6, 4), r = mulberry32(5);
-      for (let i = 0; i < 26; i++) {
-        const x = (r() < 0.5 ? -1 : 1) * (6.8 + r() * 1.6), z = -14 + r() * 20;
-        add(g, petal, r() < 0.5 ? MAT.cream : MAT.lemon, x, 0.06, z).scale.set(1, 0.5, 1);
-      }
-    },
+    build(g) { sheet(g, 12.5, 18.5, flatMat(0x2c5a9e), 0.003); sheet(g, 12.1, 18.1, new THREE.MeshStandardMaterial({ map: ginghamTexture(), roughness: 1 }), 0.006); },
   },
   table: {
     launcher: [0x4b5d66, 0x7f98a2, 0xf3d9a8],
-    build(g) {
-      const flat = (w, d, m, y) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); p.rotation.x = -Math.PI / 2; p.position.set(0, y, -3.6); p.receiveShadow = true; g.add(p); };
-      // a garden table: dark slate rim boards round a pale painted plank top
-      flat(13.3, 19.3, new THREE.MeshStandardMaterial({ color: 0x4b5d66, roughness: 1 }), 0.003);
-      flat(12.7, 18.7, new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.9 }), 0.006);
-      // a teapot and a jam jar past the far end
-      const china = mat(0xf4f1ea, { roughness: 0.35 }), blue = mat(0x3d6fb6, { roughness: 0.4 }), jam = mat(0xb8203a, { roughness: 0.25 });
-      const pot = new THREE.Group();
-      add(pot, new THREE.SphereGeometry(0.75, 20, 14), china, 0, 0.7, 0).scale.set(1, 0.85, 1);
-      add(pot, cyl(0.62, 0.62, 0.06, 20), blue, 0, 0.66, 0);
-      add(pot, cyl(0.3, 0.42, 0.18, 16), china, 0, 1.3, 0);
-      add(pot, new THREE.SphereGeometry(0.1, 10, 8), blue, 0, 1.44, 0);
-      add(pot, cyl(0.07, 0.13, 0.7, 10), china, 0.86, 0.85, 0, 0, 0, -0.9);
-      add(pot, new THREE.TorusGeometry(0.32, 0.07, 8, 16, Math.PI * 1.2), china, -0.78, 0.78, 0, 0, 0, Math.PI * 0.4);
-      pot.position.set(-5.2, 0, -14.6); pot.rotation.y = 0.5; g.add(pot);
-      const jar = new THREE.Group();
-      add(jar, cyl(0.42, 0.42, 0.85, 18), jam, 0, 0.425, 0);
-      add(jar, cyl(0.45, 0.45, 0.16, 18), mat(0xf7f0e0), 0, 0.93, 0);
-      add(jar, cyl(0.46, 0.46, 0.05, 18), mat(0xd94a4a), 0, 0.97, 0);
-      jar.position.set(5.4, 0, -14.4); g.add(jar);
-    },
+    // a painted plank board with a slate border
+    build(g) { sheet(g, 12.5, 18.5, flatMat(0x4b5d66), 0.003); sheet(g, 12.1, 18.1, new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.9 }), 0.006); },
   },
 };
 const worldGroups = {};
@@ -2117,7 +2059,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   const dist = CAM_POS.distanceTo(CAM_LOOK);
-  const hf = Math.atan(7.0 / dist);
+  const hf = Math.atan(VIEW_HALF_W / dist);
   camera.fov = THREE.MathUtils.radToDeg(clamp(2 * Math.atan(Math.tan(hf) / camera.aspect), 0.6, 1.3));
   camera.updateProjectionMatrix();
   dpr = Math.min(window.devicePixelRatio || 1, 2); viewW = w; viewH = h;
