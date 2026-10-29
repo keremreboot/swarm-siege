@@ -104,6 +104,10 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
 .colony-dial { position: relative; width: 74px; height: 74px; border-radius: 50%; box-shadow: 0 4px 0 rgba(0, 0, 0, .22); }
 .colony-dial svg.ringsvg { position: absolute; inset: 0; }
 .colony .track { fill: var(--cream); stroke: var(--honey); stroke-width: 7; }
+/* with the free ant on, the rim becomes a clock that fills toward the next one */
+.colony .ring { fill: none; stroke: var(--honey); stroke-width: 7; stroke-linecap: round; display: none; }
+.colony.trickle .track { stroke: rgba(31, 39, 22, .16); }
+.colony.trickle .ring { display: inline; }
 .colony-core { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
 .colony-core svg { width: 26px; height: 26px; color: var(--ink); }
 .colony-core b { font-family: var(--font-display); font-weight: 400; font-size: 19px; font-variant-numeric: tabular-nums; }
@@ -154,6 +158,8 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
 .field output { font-family: var(--font-display); font-weight: 400; font-size: 15px; font-variant-numeric: tabular-nums; }
 .field small { font-size: 12px; color: var(--page-muted); }
 .field input { width: 100%; accent-color: var(--olive); }
+.field.toggle label { align-items: center; gap: 12px; cursor: pointer; }
+.field.toggle input { width: 22px; height: 22px; flex: none; margin: 0; cursor: pointer; }
 .field-title { font-size: 13px; font-weight: 700; }
 .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .seg button {
@@ -215,7 +221,7 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
       <div id="goals" class="goals" aria-label="Objectives"></div>
       <div id="colony" class="colony" aria-live="polite">
         <div class="colony-dial">
-          <svg class="ringsvg" viewBox="0 0 74 74"><circle class="track" cx="37" cy="37" r="31"/></svg>
+          <svg class="ringsvg" viewBox="0 0 74 74"><circle class="track" cx="37" cy="37" r="31"/><circle id="colonyRing" class="ring" cx="37" cy="37" r="31" transform="rotate(-90 37 37)" stroke-dasharray="194.8" stroke-dashoffset="194.8"/></svg>
           <div class="colony-core">
             <svg viewBox="0 0 32 32" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M13 16l-4-6M13 16l-4 6M16 16l0-7M16 16l0 7M19 16l4-6M19 16l4 6M22.5 14l3-5M22.5 18l3 5" fill="none"/><ellipse cx="9" cy="16" rx="5" ry="3.8" stroke="none"/><ellipse cx="16" cy="16" rx="2.8" ry="2.4" stroke="none"/><circle cx="22" cy="16" r="2.9" stroke="none"/></svg>
             <b id="colonyCount">1</b>
@@ -263,6 +269,7 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
     <div class="field"><label for="t-sense">Swarm sight range <output id="o-sense"></output></label><input type="range" id="t-sense" min="1.5" max="12" step="0.5"><small>How far a swarm looks for food and other swarms</small></div>
     <div class="field"><label for="t-roam">Idle search growth <output id="o-roam"></output></label><input type="range" id="t-roam" min="0" max="2" step="0.1"><small>How fast a swarm with nothing to eat looks further out. 0 means it waits where it is.</small></div>
     <div class="field"><label for="t-start">Ants in the first ball <output id="o-start"></output></label><input type="range" id="t-start" min="1" max="20" step="1"></div>
+    <div class="field toggle"><label for="t-free">Free ant every 15 s <input type="checkbox" id="t-free"></label><small>The colony hatches one ant into the ball every 15 seconds, so a colony whose ants are all stuck on big food can still throw. Off means a bad throw can stall the round.</small></div>
     <div class="actions">
       <button id="tuneApply" class="btn primary" type="button">Restart level</button>
       <button id="tuneReset" class="btn" type="button">Defaults</button>
@@ -273,7 +280,8 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
         <li>Tap the base to launch the glass ball. It shatters and the ants spill out.</li>
         <li>Any swarm can eat anything; more ants eat it faster. Swarms that meet merge.</li>
         <li>Every object is worth some eggs, laid in batches at checkpoints as it is eaten. Eggs fly to the colony and hatch into the next ball.</li>
-        <li>Ants never die. A swarm with nothing nearby slowly looks further out until it finds food.</li>
+        <li>Ants never die. A swarm with nothing nearby slowly looks further out until it finds food, but a swarm never leaves food it has started on.</li>
+        <li>With the free ant on, the colony also hatches one ant every 15 seconds; its rim fills toward the next one.</li>
         <li>Eat the three objectives in red rings before the clock runs out.</li>
       </ol>
     </section>
@@ -293,10 +301,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // ================= tuning =================
 // v1 keeps its own saved settings, apart from the original game on the same site; the key changes
 // whenever the defaults are rebalanced, so sliders saved under an older balance do not hide the new one
-const DEFAULTS = { time: 180, eatRate: 0.25, eggScale: 1, checkpoints: 0, antSpeed: 2.4, startAnts: 1, sense: 3.2, roam: 0.5 };
+const DEFAULTS = { time: 180, eatRate: 0.4, eggScale: 1, checkpoints: 0, antSpeed: 2.4, startAnts: 1, sense: 3.2, roam: 0.5, freeAnt: false };
 const CFG = { ...DEFAULTS };
-try { Object.assign(CFG, JSON.parse(localStorage.getItem('swarm-siege-v1-cfg-2') || '{}')); } catch (e) { /* storage blocked */ }
-const saveCfg = () => { try { localStorage.setItem('swarm-siege-v1-cfg-2', JSON.stringify(CFG)); } catch (e) { /* ignore */ } };
+try { Object.assign(CFG, JSON.parse(localStorage.getItem('swarm-siege-v1-cfg-3') || '{}')); } catch (e) { /* storage blocked */ }
+const saveCfg = () => { try { localStorage.setItem('swarm-siege-v1-cfg-3', JSON.stringify(CFG)); } catch (e) { /* ignore */ } };
 let levelIdx = 0;
 try { levelIdx = parseInt(localStorage.getItem('swarm-siege-v1-level') || '0', 10) || 0; } catch (e) { /* storage blocked */ }
 const saveLevel = () => { try { localStorage.setItem('swarm-siege-v1-level', String(levelIdx)); } catch (e) { /* ignore */ } };
@@ -733,7 +741,7 @@ const BUILD = {
   },
 };
 // any swarm can eat anything. hp: bites it takes; eggs: what it is worth, laid in cp even batches as it is eaten.
-// Tuned with the 0.25 bite speed for a two to two-and-a-half minute clear on either level.
+// Tuned with the 0.4 bite speed for a two to two-and-a-half minute clear on either level.
 const KINDS = {
   sandbags: { hp: 2, eggs: 1, cp: 1 }, barrel: { hp: 2, eggs: 1, cp: 1 }, crate: { hp: 2, eggs: 1, cp: 1 },
   drums: { hp: 7, eggs: 2, cp: 2 }, crates: { hp: 10, eggs: 3, cp: 2 }, wall: { hp: 14, eggs: 4, cp: 2 }, tent: { hp: 20, eggs: 5, cp: 3 },
@@ -974,7 +982,7 @@ function addAntToBall(b, instant) {
 }
 
 function newSwarm(P) {
-  const s = { id: ++swarmSeq, ants: [], c: P.clone(), lead: new V3(P.x, 0, P.z), r: 0.2, target: null, state: 'move', think: 0, pulse: 1, idleT: 0, slowT: 0 };
+  const s = { id: ++swarmSeq, ants: [], c: P.clone(), lead: new V3(P.x, 0, P.z), r: 0.2, target: null, state: 'move', think: 0, pulse: 1, idleT: 0 };
   swarms.push(s); return s;
 }
 function setTarget(s, o) {
@@ -982,21 +990,18 @@ function setTarget(s, o) {
   for (const a of s.ants) a.spot.set(rand() * 2 - 1, rand() * 2 - 1);
 }
 // swarms only notice food and other swarms near them, so where a ball lands matters;
-// a swarm with nothing to do (or stuck on food far too big for it) slowly widens its search,
-// so ants that never die never sit idle for good
-const senseRange = (s) => CFG.sense + Math.min(3, s.ants.length * 0.03) + Math.max(0, Math.max(s.idleT, s.slowT) - 2) * CFG.roam;
-// seconds until n ants eating o reach its next egg checkpoint
-const payWait = (o, n) => Math.max(0, o.hp - o.maxHp * (1 - (o.cpDone + 1) / o.cps)) / (n * CFG.eatRate);
-const SLOW_PAY = 20;
+// a swarm with nothing to do slowly widens its search, so ants that never die never sit idle for good.
+// A swarm never leaves food it has started on: throw a lone ant at the cake and it eats the cake.
+const senseRange = (s) => CFG.sense + Math.min(3, s.ants.length * 0.03) + Math.max(0, s.idleT - 2) * CFG.roam;
 function pickTarget(s) {
   const n = s.ants.length; const range = senseRange(s); let best = null, bs = Infinity;
   for (const o of objects) {
     if (!o.alive) continue;
     const d = Math.hypot(o.x - s.c.x, o.z - s.c.z) - Math.max(o.hx, o.hz) * o.scale;
     if (d > range) continue;
-    // close food first; a big swarm leans toward food big enough to feed all of it, and toward objectives;
-    // food that would take this swarm ages to get a single egg out of loses out, so a lone ant on the HQ goes for snacks
-    const score = d - (o.objective ? 2.5 * Math.min(1, n / 12) : 0) - Math.min(n, o.hp) * 0.04 + Math.max(0, payWait(o, n) - 8) * 0.06;
+    // close food first, so a small swarm eats what it was thrown at; objectives pull a grown swarm from a little further,
+    // and a big swarm leans toward food big enough to feed all of it
+    const score = d - (o.objective ? 2.5 * Math.min(1, n / 12) : 0) - Math.min(n, o.hp) * 0.04;
     if (score < bs) { bs = score; best = o; }
   }
   return best;
@@ -1152,7 +1157,9 @@ const SFX = {
 };
 
 // ================= game state =================
-const G = { state: 'ready', time: CFG.time, colony: 1, hatched: 1, shots: 0, goalsTotal: 0, goalsLeft: 0, pendingHatch: 0, flyerCd: 0, shake: 0 };
+const G = { state: 'ready', time: CFG.time, colony: 1, hatched: 1, shots: 0, goalsTotal: 0, goalsLeft: 0, pendingHatch: 0, flyerCd: 0, shake: 0, freeT: 0 };
+// the optional free ant: one hatches every FREE_EVERY seconds of play while the toggle is on
+const FREE_EVERY = 15;
 const flyers = [], floaters = [];
 let clock = 0, round = 0;
 
@@ -1165,7 +1172,7 @@ function resetGame(idx = levelIdx) {
   while (balls.length) removeBall(balls[0]);
   for (const r of rings) scene.remove(r.m); rings.length = 0;
   shards.length = 0; debris.length = 0; eggs3.length = 0; eggs2.length = 0; flyers.length = 0; floaters.length = 0;
-  Object.assign(G, { state: 'ready', time: CFG.time, colony: CFG.startAnts, hatched: CFG.startAnts, shots: 0, pendingHatch: 0, flyerCd: 0, shake: 0 });
+  Object.assign(G, { state: 'ready', time: CFG.time, colony: CFG.startAnts, hatched: CFG.startAnts, shots: 0, pendingHatch: 0, flyerCd: 0, shake: 0, freeT: 0 });
   applyWorld(L.world);
   buildLevel(L);
   G.goalsTotal = G.goalsLeft = objects.filter((o) => o.objective).length;
@@ -1286,11 +1293,6 @@ function updateSwarms(dt, live) {
     if (s.target && !s.target.alive) { s.target = null; s.state = 'move'; s.lead.set(s.c.x, 0, s.c.z); s.think = 0; }
     s.think -= dt;
     if (!s.target && s.think <= 0) { s.think = 0.3; const t = pickTarget(s); if (t) setTarget(s, t); }
-    // too few ants to get eggs out of their food any time soon: keep looking, further and further, for something better
-    if (s.target && payWait(s.target, n) > SLOW_PAY) {
-      s.slowT += dt;
-      if (s.think <= 0) { s.think = 1; const t = pickTarget(s); if (t && t !== s.target) setTarget(s, t); }
-    } else s.slowT = 0;
     if (s.target) { s.idle = false; s.idleT = 0; } else s.idleT += dt;
     const step = CFG.antSpeed * 0.85 * dt;
     if (s.target) {
@@ -1542,7 +1544,7 @@ function drawOverlay() {
     const x = e.x + 44, y = c.y; const n = readyBall.ants.length;
     const coming = eggs3.length || eggs2.length || flyers.length || G.pendingHatch;
     if (n > 0) countPill(x, y, '', n, { bg: COL.honey, fg: COL.ink, size: 20 });
-    else textPill(x + 12, y, coming ? 'Hatching…' : 'Eat for eggs', readyBall.deny > 0 ? COL.signal : COL.ink70, COL.cream, 14);
+    else textPill(x + 12, y, coming ? 'Hatching…' : CFG.freeAnt && live ? `Free ant in ${Math.ceil(FREE_EVERY - G.freeT)}s` : 'Eat for eggs', readyBall.deny > 0 ? COL.signal : COL.ink70, COL.cream, 14);
   }
 
   // eggs flying into the colony, growing from their size in the world to a size that reads on the HUD
@@ -1575,8 +1577,9 @@ function drawOverlay() {
 }
 
 // ================= HUD =================
-const hud = { secs: -1, count: -1 };
-const timerEl = $('timer'), colonyCountEl = $('colonyCount');
+const hud = { secs: -1, count: -1, ring: -1 };
+const timerEl = $('timer'), colonyCountEl = $('colonyCount'), colonyRingEl = $('colonyRing');
+const RING_LEN = 2 * Math.PI * 31;
 function buildGoalsUI() {
   const wrap = $('goals'); wrap.innerHTML = '';
   for (const o of objects.filter((x) => x.objective)) {
@@ -1593,6 +1596,9 @@ function updateHUD() {
   timerEl.classList.toggle('low', G.state === 'play' && G.time <= 10);
   timerEl.classList.toggle('idle', G.state === 'ready');
   if (G.colony !== hud.count) { hud.count = G.colony; colonyCountEl.textContent = G.colony; }
+  colonyEl.classList.toggle('trickle', !!CFG.freeAnt);
+  const prog = CFG.freeAnt ? clamp(G.freeT / FREE_EVERY, 0, 1) : 0;
+  if (Math.abs(prog - hud.ring) > 0.004) { hud.ring = prog; colonyRingEl.setAttribute('stroke-dashoffset', (RING_LEN * (1 - prog)).toFixed(1)); }
   // each objective's bar fills as it is eaten
   for (const o of objects) {
     if (!o.objective || !o.goalFill) continue;
@@ -1635,10 +1641,12 @@ const TUNE = [
   ['roam', 't-roam', 'o-roam', (v) => (v ? v.toFixed(1) + ' m/s' : 'Off')],
   ['startAnts', 't-start', 'o-start', (v) => String(v)],
 ];
-function syncTuning() { for (const [k, id, out, f] of TUNE) { $(id).value = CFG[k]; $(out).textContent = f(CFG[k]); } }
+function syncTuning() { for (const [k, id, out, f] of TUNE) { $(id).value = CFG[k]; $(out).textContent = f(CFG[k]); } $('t-free').checked = !!CFG.freeAnt; }
 for (const [k, id, out, f] of TUNE) {
   $(id).addEventListener('input', (e) => { CFG[k] = parseFloat(e.target.value); $(out).textContent = f(CFG[k]); saveCfg(); });
 }
+// the free ant switches on and off live; its clock keeps whatever it had counted
+$('t-free').addEventListener('change', (e) => { CFG.freeAnt = e.target.checked; saveCfg(); });
 syncTuning();
 const tuningEl = $('tuning');
 // on phones the sheet covers the game, so the game pauses while it is open
@@ -1682,6 +1690,7 @@ resize();
 function step(dt) {
   clock += dt;
   if (G.state === 'play') { G.time -= dt; if (G.time <= 0) { G.time = 0; endGame(false); } }
+  if (G.state === 'play' && CFG.freeAnt) { G.freeT += dt; if (G.freeT >= FREE_EVERY) { G.freeT -= FREE_EVERY; hatchEggs(1); } }
   const live = G.state === 'ready' || G.state === 'play';
   rebuildHeight();
   updateObjects(dt);
