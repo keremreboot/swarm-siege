@@ -117,6 +117,7 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
 }
 .colony.pop .colony-dial { animation: pop .22s ease-out; }
 #game[data-world="picnic"] .level-chip { background: #3466b2; }
+#game[data-world="table"] .level-chip { background: #b4532a; }
 
 .hint {
   position: absolute; left: 50%; bottom: 25%; transform: translateX(-50%); background: var(--ink-70); color: var(--cream);
@@ -282,7 +283,8 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
         <li>Every object is worth some eggs, laid in batches at checkpoints as it is eaten. Eggs fly to the colony and hatch into the next ball.</li>
         <li>Ants never die. A swarm with nothing nearby slowly looks further out until it finds food, but a swarm never leaves food it has started on.</li>
         <li>With the free ant on, the colony also hatches one ant every 15 seconds; its rim fills toward the next one.</li>
-        <li>Eat the three objectives in red rings before the clock runs out.</li>
+        <li>Eat the objectives in red rings before the clock runs out.</li>
+        <li>In Sweet stacks every piece is a real object: eat one away and whatever it held up drops or topples. A buried piece can only be eaten from the table.</li>
       </ol>
     </section>
   </aside>
@@ -291,12 +293,14 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
 } }
 </script>
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as CANNON from 'cannon-es';
 
 // ================= tuning =================
 // v1 keeps its own saved settings, apart from the original game on the same site; the key changes
@@ -395,6 +399,27 @@ function ginghamTexture() {
   for (let i = 0; i < 2600; i++) { g.fillStyle = r() < 0.5 ? 'rgba(20,40,90,0.07)' : 'rgba(255,255,255,0.14)'; g.fillRect(r() * 512, r() * 768, 1 + r() * 2, 1 + r() * 2); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
+// a painted garden table, weathered to a pale blue-grey: a calm cool field, so the warm food stands off it.
+// Long planks run away from the camera, with soft grain, a few knots and dark seams.
+function woodTexture() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 768;
+  const g = c.getContext('2d'); const r = mulberry32(23); const P = 512 / 6;
+  for (let i = 0; i < 6; i++) {
+    const tone = 0.95 + r() * 0.1;
+    g.fillStyle = `rgb(${Math.round(170 * tone)},${Math.round(188 * tone)},${Math.round(194 * tone)})`; g.fillRect(i * P, 0, P, 768);
+    for (let k = 0; k < 18; k++) {
+      const x = i * P + 4 + r() * (P - 8), w = 0.6 + r() * 1.6;
+      g.strokeStyle = r() < 0.5 ? 'rgba(62,84,96,0.16)' : 'rgba(255,255,255,0.18)'; g.lineWidth = w;
+      g.beginPath(); g.moveTo(x, 0); g.bezierCurveTo(x + (r() - 0.5) * 14, 260, x + (r() - 0.5) * 14, 520, x + (r() - 0.5) * 8, 768); g.stroke();
+    }
+    for (let k = 0; k < 2; k++) {
+      const x = i * P + 14 + r() * (P - 28), y = r() * 768;
+      g.fillStyle = 'rgba(70,92,104,0.28)'; g.beginPath(); g.ellipse(x, y, 5 + r() * 4, 9 + r() * 6, 0, 0, TAU); g.fill();
+    }
+    g.fillStyle = 'rgba(38,52,62,0.5)'; g.fillRect(i * P - 1.5, 0, 3, 768);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
 
 (function scenery() {
   const r = mulberry32(42);
@@ -440,6 +465,10 @@ const MAT = {
   bun: mat(0xe0a050), sesame: mat(0xfff3d0), patty: mat(0x6b3a22), rind: mat(0x3f8f3a), rindDark: mat(0x2c6a2a), pith: mat(0xdcefc0),
   flesh: mat(0xf05a5a), seed: mat(0x2a1a14), plate: mat(0xf2f6f8, { roughness: 0.4 }), candle: mat(0x6fb7e8), strawberry: mat(0xe03a3a),
   leafGreen: mat(0x4f9a3a), flame: new THREE.MeshBasicMaterial({ color: 0xffc23a }),
+  // stacks
+  pancake: mat(0xdf9f52), pancakeTop: mat(0xf0c27a), pancakeEdge: mat(0xa8652c), butter: mat(0xfbe6a2, { roughness: 0.5 }),
+  syrup: mat(0xa9561a, { roughness: 0.18 }), pattyDark: mat(0x4e2a18), lettuceLight: mat(0x9ad65c), tomato: mat(0xf2715a, { roughness: 0.45 }),
+  chocDark: mat(0x5a321e, { roughness: 0.5 }), pearl: mat(0xfff8ee, { roughness: 0.3 }),
 };
 
 // ================= level objects =================
@@ -739,7 +768,110 @@ const BUILD = {
       anim: (t) => flames.forEach((f, i) => f.scale.set(0.8, 1.5 + Math.sin(t * 14 + i * 2) * 0.3, 0.8)),
     };
   },
+
+  // ---------- stacked pieces: each one a rigid body resting on the one below ----------
+  // ext: the collider's half sizes when they differ from hx, h / 2, hz (round food stands on a slightly smaller box)
+  pancake() {
+    const g = new THREE.Group();
+    add(g, cyl(0.86, 0.84, 0.2, 22), MAT.pancake, 0, 0.1, 0);
+    add(g, cyl(0.8, 0.8, 0.012, 22), MAT.pancakeTop, 0, 0.202, 0);
+    add(g, cyl(0.83, 0.86, 0.035, 22), MAT.pancakeEdge, 0, 0.018, 0);
+    return { g, hx: 0.86, hz: 0.86, h: 0.2, color: '#df9f52', round: true, ext: [0.74, 0.1, 0.74] };
+  },
+  pancakeTop() {
+    const b = BUILD.pancake(), g = b.g;
+    add(g, cyl(0.62, 0.66, 0.03, 20), MAT.syrup, 0, 0.215, 0);
+    for (const a of [0.3, 1.6, 2.6, 3.9, 5.1]) {
+      const x = Math.sin(a) * 0.85, z = Math.cos(a) * 0.85;
+      add(g, cyl(0.06, 0.05, 0.16, 6), MAT.syrup, x, 0.13, z); add(g, new THREE.SphereGeometry(0.06, 6, 4), MAT.syrup, x, 0.05, z);
+    }
+    add(g, box(0.36, 0.16, 0.3), MAT.butter, 0.05, 0.31, -0.02, 0, 0.4, 0);
+    return b;
+  },
+  bunBottom() {
+    const g = new THREE.Group();
+    add(g, cyl(0.95, 0.86, 0.3, 22), MAT.bun, 0, 0.15, 0);
+    add(g, cyl(0.9, 0.9, 0.02, 22), MAT.bread, 0, 0.305, 0);
+    return { g, hx: 0.95, hz: 0.95, h: 0.31, color: '#e0a050', round: true, ext: [0.8, 0.155, 0.8] };
+  },
+  pattyLayer() {
+    const g = new THREE.Group();
+    add(g, cyl(1.02, 1.0, 0.26, 18), MAT.patty, 0, 0.13, 0);
+    const bump = new THREE.SphereGeometry(0.16, 6, 4);
+    for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.2 + (i % 3) * 0.27; add(g, bump, MAT.pattyDark, Math.cos(a) * r, 0.26, Math.sin(a) * r).scale.set(1, 0.25, 1); }
+    return { g, hx: 1.02, hz: 1.02, h: 0.26, color: '#6b3a22', round: true, ext: [0.86, 0.13, 0.86] };
+  },
+  cheeseSlab() {
+    const g = new THREE.Group();
+    add(g, box(1.62, 0.1, 1.62), MAT.cheese, 0, 0.05, 0);
+    // the corners melt down over the patty
+    for (const [x, z] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) add(g, new THREE.ConeGeometry(0.13, 0.3, 6), MAT.cheese, x * 0.72, -0.07, z * 0.72, Math.PI, 0, 0);
+    return { g, hx: 0.81, hz: 0.81, h: 0.1, color: '#f6c445', ext: [0.8, 0.05, 0.8] };
+  },
+  lettuceLeaf() {
+    const g = new THREE.Group();
+    add(g, cyl(1.14, 1.06, 0.1, 11), MAT.lettuce, 0, 0.05, 0, 0, 0.2, 0);
+    add(g, cyl(0.98, 0.98, 0.104, 9), MAT.lettuceLight, 0, 0.052, 0, 0, 0.5, 0);
+    return { g, hx: 1.12, hz: 1.12, h: 0.1, color: '#6cbf3f', round: true, ext: [0.84, 0.05, 0.84] };
+  },
+  tomatoSlab() {
+    const g = new THREE.Group();
+    for (const [x, z] of [[-0.42, 0.25], [0.42, 0.25], [0, -0.45]]) {
+      add(g, cyl(0.44, 0.44, 0.12, 16), MAT.red, x, 0.06, z);
+      add(g, cyl(0.36, 0.36, 0.124, 14), MAT.tomato, x, 0.06, z);
+    }
+    return { g, hx: 0.86, hz: 0.89, h: 0.12, color: '#e2462f', ext: [0.78, 0.06, 0.78] };
+  },
+  bunTop() {
+    const g = new THREE.Group();
+    add(g, new THREE.SphereGeometry(0.98, 24, 10, 0, TAU, 0, Math.PI / 2), MAT.bun, 0, 0.02, 0).scale.set(1, 0.6, 1);
+    add(g, cyl(0.98, 0.98, 0.04, 24), MAT.bread, 0, 0.02, 0);
+    const seed = new THREE.SphereGeometry(0.045, 6, 4);
+    for (let i = 0; i < 18; i++) {
+      const th = i * 2.4, ph = 0.2 + 0.95 * Math.sqrt((i + 0.5) / 18);
+      add(g, seed, MAT.sesame, Math.sin(ph) * Math.cos(th) * 0.98, 0.02 + Math.cos(ph) * 0.98 * 0.6, Math.sin(ph) * Math.sin(th) * 0.98, 0, th, 0).scale.set(1, 0.5, 1.8);
+    }
+    return { g, hx: 0.98, hz: 0.98, h: 0.6, color: '#e0a050', round: true, ext: [0.78, 0.3, 0.78] };
+  },
+  // a layer cake in three loose tiers; the sponge shows wherever the ants bite through the buttercream
+  tierBig() { return cakeTier(1.45, 0.72, MAT.frost, (g) => {
+    for (let i = 0; i < 12; i++) { const a = i / 12 * TAU, x = Math.sin(a) * 1.22, z = Math.cos(a) * 1.22; add(g, new THREE.ConeGeometry(0.12, 0.24, 8), MAT.strawberry, x, 0.84, z, Math.PI, 0, 0); add(g, new THREE.ConeGeometry(0.1, 0.06, 5), MAT.leafGreen, x, 0.97, z); }
+  }); },
+  tierMid() { return cakeTier(1.02, 0.6, MAT.mint, (g) => {
+    const pearl = new THREE.SphereGeometry(0.07, 8, 6);
+    for (let i = 0; i < 16; i++) { const a = i / 16 * TAU; add(g, pearl, MAT.pearl, Math.sin(a) * 0.96, 0.66, Math.cos(a) * 0.96); }
+  }); },
+  tierTop() {
+    const flames = [];
+    const b = cakeTier(0.66, 0.5, MAT.lemon, (g) => {
+      for (let i = 0; i < 5; i++) {
+        const a = i / 5 * TAU, x = Math.sin(a) * 0.36, z = Math.cos(a) * 0.36;
+        add(g, cyl(0.045, 0.045, 0.36, 6), i % 2 ? MAT.candle : MAT.yellow, x, 0.68, z);
+        const f = add(g, new THREE.SphereGeometry(0.07, 8, 6), MAT.flame, x, 0.92, z); f.castShadow = false; flames.push(f);
+      }
+    });
+    b.anim = (t) => flames.forEach((f, i) => f.scale.set(0.8, 1.5 + Math.sin(t * 14 + i * 2) * 0.3, 0.8));
+    return b;
+  },
+  chocBlock() {
+    const g = new THREE.Group();
+    add(g, box(1.8, 0.16, 0.56), MAT.chocDark, 0, 0.08, 0);
+    for (const x of [-0.6, 0, 0.6]) add(g, box(0.54, 0.16, 0.5), MAT.choc, x, 0.24, 0);
+    return { g, hx: 0.9, hz: 0.28, h: 0.32, color: '#7a4a2e' };
+  },
 };
+function cakeTier(r, h, cap, dress) {
+  const g = new THREE.Group();
+  add(g, cyl(r, r, h, 30), MAT.cream, 0, h / 2, 0);
+  add(g, cyl(r + 0.03, r + 0.03, 0.1, 30), cap, 0, h - 0.05, 0);
+  const n = Math.round(r * 12), drip = new THREE.SphereGeometry(0.065, 6, 4);
+  for (let i = 0; i < n; i++) {
+    const a = i / n * TAU + 0.1, len = 0.12 + ((i * 7) % 5) * 0.035, x = Math.sin(a) * (r + 0.01), z = Math.cos(a) * (r + 0.01);
+    add(g, cyl(0.065, 0.065, len, 6), cap, x, h - len / 2, z); add(g, drip, cap, x, h - len, z);
+  }
+  dress(g);
+  return { g, hx: r, hz: r, h, color: '#f0cf94', round: true, ext: [r * 0.84, h / 2, r * 0.84] };
+}
 // any swarm can eat anything. hp: bites it takes; eggs: what it is worth, laid in cp even batches as it is eaten.
 // Tuned with the 0.4 bite speed for a two to two-and-a-half minute clear on either level.
 const KINDS = {
@@ -752,6 +884,14 @@ const KINDS = {
   donut: { hp: 7, eggs: 2, cp: 2 }, cupcake: { hp: 10, eggs: 3, cp: 2 }, chocbar: { hp: 14, eggs: 4, cp: 2 }, cheese: { hp: 20, eggs: 5, cp: 3 },
   sandwich: { hp: 26, eggs: 6, cp: 3 }, shake: { hp: 32, eggs: 7, cp: 4 }, pizza: { hp: 40, eggs: 8, cp: 4 },
   burger: { hp: 120, eggs: 5, cp: 4, objective: 'Burger' }, melon: { hp: 260, eggs: 9, cp: 5, objective: 'Melon' }, cake: { hp: 400, eggs: 12, cp: 6, objective: 'Cake' },
+  // stacked pieces; a whole stack can be one objective (the level names it)
+  // the stacked objectives (Pancakes 192, Burger 194, Layer cake 500) are a little bigger than the Picnic's,
+  // since the towers round them hold more food than its blanket
+  pancake: { hp: 24, eggs: 2, cp: 1 }, pancakeTop: { hp: 24, eggs: 2, cp: 1 },
+  bunBottom: { hp: 32, eggs: 3, cp: 1 }, pattyLayer: { hp: 38, eggs: 3, cp: 2 }, cheeseSlab: { hp: 18, eggs: 2, cp: 1 },
+  lettuceLeaf: { hp: 14, eggs: 1, cp: 1 }, tomatoSlab: { hp: 14, eggs: 1, cp: 1 }, bunTop: { hp: 40, eggs: 3, cp: 2 },
+  tierBig: { hp: 240, eggs: 6, cp: 4 }, tierMid: { hp: 160, eggs: 4, cp: 3 }, tierTop: { hp: 100, eggs: 3, cp: 2 },
+  chocBlock: { hp: 5, eggs: 1, cp: 1 },
 };
 
 // ================= levels =================
@@ -781,35 +921,265 @@ const LEVELS = [
       ['donut', -0.4, -3.7], ['donut', -4.7, -4.4], ['donut', -3.8, -8.9],
     ],
   },
+  {
+    // after Ant Swarm's stacked food: every piece is a rigid body, so eating one away drops or topples what it held up
+    world: 'table', name: 'Sweet stacks', hint: 'Tap the table to launch your ant', win: 'Stacks toppled', seed: 2468, physics: true,
+    smalls: ['sugar', 'cherry', 'cookie', 'candy'], scatter: [[11, 1.4, 4.8], [7, -7.0, -1.2], [5, -12.2, -7.2]],
+    layout: [],
+    // stack rows: [stack, x, z, objective name]
+    stacks: [
+      ['cake', 0, -10.0, 'Layer cake'], ['pancakes', -3.7, -6.1, 'Pancakes'], ['burger', 3.4, -4.9, 'Burger'],
+      ['jenga', -3.7, -1.1], ['pyramid', 3.7, -0.4], ['pyramid', -1.2, -8.2],
+      ['donuts', 0.5, -6.6], ['donuts', -4.5, -10.4], ['donuts', 1.2, -1.6],
+      ['cookies', 4.4, -9.8], ['cookies', -1.5, -3.9], ['cookies', 4.6, -2.3],
+      ['jenga', 2.2, -8.4],
+    ],
+  },
 ];
+// stacks are listed bottom to top; jenga and pyramid are laid out by hand in buildStack
+const STACKS = {
+  cake: ['tierBig', 'tierMid', 'tierTop'],
+  pancakes: ['pancake', 'pancake', 'pancake', 'pancake', 'pancake', 'pancake', 'pancake', 'pancakeTop'],
+  burger: ['bunBottom', 'pattyLayer', 'cheeseSlab', 'lettuceLeaf', 'tomatoSlab', 'pattyLayer', 'bunTop'],
+  donuts: ['donut', 'donut', 'donut', 'donut'],
+  cookies: ['cookie', 'cookie', 'cookie', 'cookie', 'cookie'],
+};
 
 const levelGroup = new THREE.Group(); scene.add(levelGroup);
 const objects = [];
 const ringGeo = new THREE.RingGeometry(1, 1.09, 48);
 
-function spawnObject(kind, x, z, quarterTurns = 0, freeYaw = null) {
-  const def = KINDS[kind]; const b = BUILD[kind]();
-  b.g.position.set(x, 0, z);
-  let hx = b.hx, hz = b.hz;
-  if (freeYaw !== null) { b.g.rotation.y = freeYaw; hx = hz = Math.max(b.hx, b.hz) * 0.85; }
-  else if (quarterTurns) { b.g.rotation.y = quarterTurns * Math.PI / 2; if (quarterTurns % 2) [hx, hz] = [hz, hx]; }
-  const o = {
-    kind, x, z, hx, hz, h: b.h, maxHp: def.hp, hp: def.hp, alive: true, scale: 1, group: b.g, color: b.color,
-    eggs: Math.max(1, Math.round(def.eggs * CFG.eggScale)), cps: CFG.checkpoints || def.cp, cpDone: 0, cpPop: 0,
-    objective: def.objective || null, eatT: 0, flag: b.flag || null, spin: b.spin || null, ring: null,
-    tiers: b.tiers || (b.round ? [[1, b.h]] : null), lift: b.lift || 0, anim: b.anim || null,
+// ================= bites: food is eaten in chunks, it never shrinks =================
+// Each object keeps up to MAX_BITES spheres in its own space. Every fragment inside one is cut away, the inside
+// faces that show through the hole are painted the food's inner colour, and a soft dark ring sits round each bite.
+// The shadow pass cuts the same holes, so a half-eaten cake casts a half-eaten shadow.
+const MAX_BITES = 24;
+const INNER_TINT = new THREE.Color(0xf6e2b8);
+function biteShader(m, U, depth) {
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = 'varying vec3 vBiteW;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vBiteW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    let f = `varying vec3 vBiteW;\nuniform vec4 uBites[${MAX_BITES}];\nuniform int uBiteN;\nuniform vec3 uInner;\n` + sh.fragmentShader;
+    f = f.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+  float biteEdge = 1.0;
+  for (int i = 0; i < ${MAX_BITES}; i++) {
+    if (i >= uBiteN) break;
+    float d = length(vBiteW - uBites[i].xyz) - uBites[i].w;
+    if (d < 0.0) discard;
+    biteEdge = min(biteEdge, d);
+  }`);
+    // the inside shows as a flat cut face: unlit, so it never picks up shadow stripes from the walls round it
+    if (!depth) f = f.replace('#include <color_fragment>', `#include <color_fragment>
+  if (gl_FrontFacing) diffuseColor.rgb *= mix(0.68, 1.0, smoothstep(0.0, 0.09, biteEdge));`)
+      .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+  if (!gl_FrontFacing) gl_FragColor.rgb = uInner * 0.92;`);
+    sh.fragmentShader = f;
   };
+  m.customProgramCacheKey = () => (depth ? 'bite-depth' : 'bite');
+}
+// a still object's parts are welded into one mesh per material, so a sprinkled donut is two draw calls, not fourteen
+// (objects with moving parts, like a flag, the radar dish or candle flames, keep theirs)
+function mergeParts(o) {
+  if (o.flag || o.spin || o.anim) return;
+  if (o.group.children.some((m) => !m.isMesh)) return; // a nested group: leave the object as built
+  const byMat = new Map();
+  for (const m of o.group.children) {
+    m.updateMatrix(); let geo = m.geometry.clone().applyMatrix4(m.matrix);
+    if (geo.index) { const flat = geo.toNonIndexed(); geo.dispose(); geo = flat; }
+    if (!byMat.has(m.material)) byMat.set(m.material, []);
+    byMat.get(m.material).push(geo);
+  }
+  const merged = [];
+  for (const [mt, geos] of byMat) { const g = mergeGeometries(geos); geos.forEach((x) => x.dispose()); if (!g) { merged.forEach(([, x]) => x.dispose()); return; } merged.push([mt, g]); }
+  for (const m of [...o.group.children]) { o.group.remove(m); m.geometry.dispose(); }
+  for (const [mt, g] of merged) { const mesh = new THREE.Mesh(g, mt); mesh.castShadow = true; mesh.receiveShadow = true; o.group.add(mesh); }
+}
+// every object gets its own copies of its materials, all sharing one set of bite uniforms
+function makeBiteable(o) {
+  mergeParts(o);
+  const U = { uBites: { value: Array.from({ length: MAX_BITES }, () => new THREE.Vector4()) }, uBiteN: { value: 0 }, uInner: { value: new THREE.Color(o.color).lerp(INNER_TINT, 0.35) } };
+  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }); biteShader(depth, U, true);
+  const clones = new Map();
+  o.group.traverse((m) => {
+    if (!m.isMesh) return;
+    let c = clones.get(m.material);
+    // both sides draw, so the inside shows through a bite; shadows still come from back faces only, as before, so tops don't streak
+    if (!c) { c = m.material.clone(); c.side = THREE.DoubleSide; c.shadowSide = THREE.BackSide; biteShader(c, U, false); clones.set(m.material, c); }
+    m.material = c; m.customDepthMaterial = depth;
+  });
+  const size = Math.max(o.ext[0], o.ext[2], o.h / 2);
+  o.biteU = U; o.biteMats = [...clones.values(), depth];
+  o.biteBudget = clamp(Math.round(4 + size * 12), 4, MAX_BITES);
+  o.biteR = clamp(0.15 + size * 0.3, 0.15, 0.62);
+}
+const _bv = new V3();
+// a new bite goes where one of the eating ants is: into the surface under it, or into the wall in front of it
+function addBite(o, s) {
+  const eaters = s ? s.ants.filter((a) => a.atSpot) : [];
+  const a = eaters.length ? pick(eaters) : null, r = o.biteR * (0.75 + rand() * 0.5);
+  if (a && o.side) {
+    const dx = o.x - a.p.x, dz = o.z - a.p.z, l = Math.hypot(dx, dz) || 1;
+    _bv.set(a.p.x + dx / l * r * 0.55, Math.max(o.y0 + r * 0.5, a.p.y + 0.12), a.p.z + dz / l * r * 0.55);
+  } else if (a) _bv.set(a.p.x, a.p.y - r * 0.35, a.p.z);
+  else _bv.set(o.x + (rand() - 0.5) * o.hx, o.topY - r * 0.3, o.z + (rand() - 0.5) * o.hz);
+  o.group.updateMatrixWorld(true);
+  o.bites.push({ l: o.group.worldToLocal(_bv.clone()), r, cur: 0 });
+}
+// bites open up over a fifth of a second and widen a little as the rest of the food goes
+function updateBites(dt) {
+  for (const o of objects) {
+    if (!o.alive || !o.bites.length) continue;
+    const eaten = 1 - o.hp / o.maxHp, B = o.biteU.uBites.value;
+    o.group.updateMatrixWorld(true);
+    o.bites.forEach((b, i) => {
+      b.cur = Math.min(b.r * (0.85 + 0.45 * eaten), b.cur + dt * 3);
+      _bv.copy(b.l).applyMatrix4(o.group.matrixWorld); B[i].set(_bv.x, _bv.y, _bv.z, b.cur);
+    });
+    o.biteU.uBiteN.value = o.bites.length;
+  }
+}
+// an ant standing over a bite in the top surface stands down in the hollow (never more than a shallow dip,
+// and never for bites lower down the side, so it can't sink into whatever is next to the food)
+function biteFloor(o, x, z, y) {
+  // a tipped-over piece's top is only its bounding box, so there is no true surface to sink into
+  if (!o.biteU || (o.body && Math.abs(o.body.quaternion.x) + Math.abs(o.body.quaternion.z) > 0.08)) return y;
+  const B = o.biteU.uBites.value, floor = Math.max(o.y0, y - 0.4);
+  let out = y;
+  for (let i = 0; i < o.bites.length; i++) {
+    const b = B[i], d2 = (x - b.x) ** 2 + (z - b.z) ** 2;
+    if (d2 >= b.w * b.w || b.y + b.w < y - 0.05) continue;
+    out = Math.min(out, Math.max(floor, b.y - Math.sqrt(b.w * b.w - d2)));
+  }
+  return out;
+}
+
+// ================= physics: stacked levels only =================
+// Each piece is a box collider in a cannon-es world. Pieces start asleep, perfectly stacked; eating one away
+// wakes its neighbours, and whatever it held up drops, tips and tumbles. Low invisible rails keep it on the table.
+const PHYS = { on: false, world: null };
+function physicsReset(on) {
+  PHYS.on = on; PHYS.world = null; if (!on) return;
+  const w = new CANNON.World({ gravity: new CANNON.Vec3(0, -16, 0), allowSleep: true });
+  w.broadphase = new CANNON.SAPBroadphase(w); w.solver.iterations = 14;
+  w.defaultContactMaterial.friction = 0.55; w.defaultContactMaterial.restitution = 0.05;
+  const floor = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() }); floor.quaternion.setFromEuler(-Math.PI / 2, 0, 0); w.addBody(floor);
+  const cz = (FIELD.z0 + FIELD.z1) / 2, hzF = (FIELD.z1 - FIELD.z0) / 2 + 0.6, hxF = (FIELD.x1 - FIELD.x0) / 2 + 0.6;
+  for (const [x, z, hx, hz] of [[FIELD.x0 - 0.3, cz, 0.3, hzF], [FIELD.x1 + 0.3, cz, 0.3, hzF], [0, FIELD.z0 - 0.3, hxF, 0.3], [0, FIELD.z1 + 0.3, hxF, 0.3]]) {
+    const b = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(hx, 1.5, hz)) }); b.position.set(x, 1.5, z); w.addBody(b);
+  }
+  PHYS.world = w;
+}
+function addBody(o) {
+  const [ex, ey, ez] = o.ext;
+  const body = new CANNON.Body({ mass: Math.max(0.05, 8 * ex * ey * ez), shape: new CANNON.Box(new CANNON.Vec3(ex, ey, ez)),
+    linearDamping: 0.08, angularDamping: 0.25, allowSleep: true, sleepSpeedLimit: 0.25, sleepTimeLimit: 0.4 });
+  body.position.set(o.x, o.y0 + ey, o.z); body.quaternion.setFromEuler(0, o.yaw, 0);
+  PHYS.world.addBody(body); body.sleep(); o.body = body;
+}
+function removeBody(o) {
+  if (!o.body) return;
+  PHYS.world.removeBody(o.body); o.body = null;
+  for (const q of objects) if (q.alive && q.body && Math.abs(q.x - o.x) < 3 && Math.abs(q.z - o.z) < 3) q.body.wakeUp();
+}
+const _q3 = new THREE.Quaternion(), _m3 = new THREE.Matrix4(), _off = new V3();
+// copy each body onto its model, and keep the piece's footprint and height as the rotated box's bounds
+function syncBodies() {
+  for (const o of objects) {
+    if (!o.alive || !o.body) continue;
+    const p = o.body.position, q = o.body.quaternion, [ex, ey, ez] = o.ext;
+    _q3.set(q.x, q.y, q.z, q.w); _off.set(0, -ey, 0).applyQuaternion(_q3);
+    o.group.position.set(p.x + _off.x, p.y + _off.y, p.z + _off.z); o.group.quaternion.copy(_q3);
+    _m3.makeRotationFromQuaternion(_q3); const e = _m3.elements;
+    o.hx = Math.abs(e[0]) * ex + Math.abs(e[4]) * ey + Math.abs(e[8]) * ez;
+    const hy = Math.abs(e[1]) * ex + Math.abs(e[5]) * ey + Math.abs(e[9]) * ez;
+    o.hz = Math.abs(e[2]) * ex + Math.abs(e[6]) * ey + Math.abs(e[10]) * ez;
+    o.x = p.x; o.z = p.z; o.y0 = p.y - hy; o.topY = p.y + hy;
+  }
+}
+// a point just outside a piece's footprint, in the direction ang
+function sidePoint(o, ang) {
+  const cx = Math.cos(ang), cz = Math.sin(ang), t = 1 / Math.max(Math.abs(cx) / o.hx, Math.abs(cz) / o.hz) + 0.14;
+  return [o.x + cx * t, o.z + cz * t];
+}
+// a piece with another resting on it can only be eaten from the sides, only if it is on the table, and only
+// from sides its neighbours on the table don't wall in; pieces in the middle of a stack wait their turn
+function updateSupport() {
+  for (const o of objects) {
+    o.covered = false; o.open = null;
+    if (!o.alive || !o.body) continue;
+    for (const q of objects) {
+      if (q === o || !q.alive || !q.body || q.y0 < o.topY - 0.15 || q.y0 > o.topY + 0.2) continue;
+      if (Math.abs(q.x - o.x) < q.hx + o.hx - 0.08 && Math.abs(q.z - o.z) < q.hz + o.hz - 0.08) { o.covered = true; break; }
+    }
+    o.side = o.covered;
+    if (!o.covered || o.y0 >= 0.08) continue;
+    o.open = [];
+    for (let k = 0; k < 8; k++) { const ang = k / 8 * TAU; if (sideFree(o, ...sidePoint(o, ang))) o.open.push(ang); }
+  }
+}
+// nothing else on the table stands on this spot
+const sideFree = (o, px, pz) => !objects.some((q) => q !== o && q.alive && q.y0 < 0.3 && Math.abs(px - q.x) < q.hx + 0.06 && Math.abs(pz - q.z) < q.hz + 0.06);
+const canEat = (o) => o.alive && (!o.covered || (o.y0 < 0.08 && !!o.open && o.open.length > 0));
+function stepPhysics(dt) {
+  if (!PHYS.on) return;
+  PHYS.world.step(1 / 60, dt, 4);
+  syncBodies(); updateSupport();
+}
+
+function spawnObject(kind, x, z, quarterTurns = 0, freeYaw = null, opt = {}) {
+  const def = KINDS[kind]; const b = BUILD[kind]();
+  const y0 = opt.y0 || 0;
+  let hx = b.hx, hz = b.hz, yaw = 0;
+  if (freeYaw !== null) { yaw = freeYaw; hx = hz = Math.max(b.hx, b.hz) * 0.85; }
+  else if (quarterTurns) { yaw = quarterTurns * Math.PI / 2; if (quarterTurns % 2) [hx, hz] = [hz, hx]; }
+  b.g.position.set(x, y0, z); b.g.rotation.y = yaw;
+  const o = {
+    kind, x, z, hx, hz, h: b.h, y0, topY: y0 + b.h, maxHp: def.hp, hp: def.hp, alive: true, group: b.g, color: b.color,
+    eggs: Math.max(1, Math.round(def.eggs * CFG.eggScale)), cps: CFG.checkpoints || def.cp, cpDone: 0, cpPop: 0,
+    objective: opt.objective || def.objective || null, eatT: 0, flag: b.flag || null, spin: b.spin || null, ring: null,
+    tiers: PHYS.on ? null : b.tiers || (b.round ? [[1, b.h]] : null), anim: b.anim || null,
+    ext: b.ext || [b.hx, b.h / 2, b.hz], yaw, body: null, covered: false, side: false, bites: [],
+  };
+  makeBiteable(o);
   if (o.objective) {
     const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xe2462f, transparent: true, opacity: 0.8, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.02, z); ring.userData.base = Math.max(hx, hz) + 0.4;
     ring.scale.setScalar(ring.userData.base); scene.add(ring); o.ring = ring;
   }
+  if (PHYS.on) addBody(o);
   levelGroup.add(b.g); objects.push(o); return o;
+}
+function buildStack(type, x, z, objective, rng) {
+  const opt = (y0) => ({ y0, objective });
+  if (type === 'jenga') {
+    // four layers of three chocolate bars, each layer crossways to the one below
+    for (let L = 0; L < 4; L++) for (const k of [-1, 0, 1]) {
+      if (L % 2 === 0) spawnObject('chocBlock', x, z + k * 0.6, 0, null, opt(L * 0.32));
+      else spawnObject('chocBlock', x + k * 0.6, z, 1, null, opt(L * 0.32));
+    }
+    return;
+  }
+  if (type === 'pyramid') {
+    // sugar cubes: three by three, two by two, then one on top, each sitting across the joins below
+    let y = 0;
+    for (const n of [3, 2, 1]) {
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) spawnObject('sugar', x + (i - (n - 1) / 2) * 0.4, z + (j - (n - 1) / 2) * 0.4, 0, null, opt(y));
+      y += 0.38;
+    }
+    return;
+  }
+  let y = 0;
+  for (const kind of STACKS[type]) {
+    const yaw = kind === 'cheeseSlab' ? Math.PI / 4 + (rng() - 0.5) * 0.2 : (rng() - 0.5) * 0.6;
+    const o = spawnObject(kind, x + (rng() - 0.5) * 0.06, z + (rng() - 0.5) * 0.06, 0, yaw, opt(y));
+    y = o.topY + 0.002;
+  }
 }
 
 function buildLevel(L) {
   const rng = mulberry32(L.seed);
   for (const [k, x, z, q] of L.layout) spawnObject(k, x, z, q || 0);
+  for (const [type, x, z, objective] of L.stacks || []) buildStack(type, x, z, objective, rng);
   const scatter = (n, zA, zB) => {
     let placed = 0, tries = 0;
     while (placed < n && tries++ < 800) {
@@ -829,7 +1199,7 @@ function rebuildHeight() {
   hgrid.fill(0);
   for (const o of objects) {
     if (!o.alive) continue;
-    const s = o.scale, hx = o.hx * s, hz = o.hz * s, top = o.h * s;
+    const hx = o.hx, hz = o.hz, top = o.topY;
     const i0 = Math.max(0, Math.floor((o.x - hx - HM.x0) / HM.cs)), i1 = Math.min(HM.nx - 1, Math.floor((o.x + hx - HM.x0) / HM.cs));
     const j0 = Math.max(0, Math.floor((o.z - hz - HM.z0) / HM.cs)), j1 = Math.min(HM.nz - 1, Math.floor((o.z + hz - HM.z0) / HM.cs));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -837,7 +1207,7 @@ function rebuildHeight() {
       if (o.tiers) {
         // round objects: ants follow the outline and step up each tier
         const dx = (HM.x0 + (i + 0.5) * HM.cs - o.x) / hx, dz = (HM.z0 + (j + 0.5) * HM.cs - o.z) / hz, q = dx * dx + dz * dz;
-        t = 0; for (const [f, h] of o.tiers) if (q <= f * f && h * s > t) t = h * s;
+        t = 0; for (const [f, h] of o.tiers) if (q <= f * f && h > t) t = h;
       }
       const k = j * HM.nx + i; if (hgrid[k] < t) hgrid[k] = t;
     }
@@ -896,6 +1266,30 @@ const WORLDS = {
         const x = (r() < 0.5 ? -1 : 1) * (6.8 + r() * 1.6), z = -14 + r() * 20;
         add(g, petal, r() < 0.5 ? MAT.cream : MAT.lemon, x, 0.06, z).scale.set(1, 0.5, 1);
       }
+    },
+  },
+  table: {
+    launcher: [0x4b5d66, 0x7f98a2, 0xf3d9a8],
+    build(g) {
+      const flat = (w, d, m, y) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); p.rotation.x = -Math.PI / 2; p.position.set(0, y, -3.6); p.receiveShadow = true; g.add(p); };
+      // a garden table: dark slate rim boards round a pale painted plank top
+      flat(13.3, 19.3, new THREE.MeshStandardMaterial({ color: 0x4b5d66, roughness: 1 }), 0.003);
+      flat(12.7, 18.7, new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.9 }), 0.006);
+      // a teapot and a jam jar past the far end
+      const china = mat(0xf4f1ea, { roughness: 0.35 }), blue = mat(0x3d6fb6, { roughness: 0.4 }), jam = mat(0xb8203a, { roughness: 0.25 });
+      const pot = new THREE.Group();
+      add(pot, new THREE.SphereGeometry(0.75, 20, 14), china, 0, 0.7, 0).scale.set(1, 0.85, 1);
+      add(pot, cyl(0.62, 0.62, 0.06, 20), blue, 0, 0.66, 0);
+      add(pot, cyl(0.3, 0.42, 0.18, 16), china, 0, 1.3, 0);
+      add(pot, new THREE.SphereGeometry(0.1, 10, 8), blue, 0, 1.44, 0);
+      add(pot, cyl(0.07, 0.13, 0.7, 10), china, 0.86, 0.85, 0, 0, 0, -0.9);
+      add(pot, new THREE.TorusGeometry(0.32, 0.07, 8, 16, Math.PI * 1.2), china, -0.78, 0.78, 0, 0, 0, Math.PI * 0.4);
+      pot.position.set(-5.2, 0, -14.6); pot.rotation.y = 0.5; g.add(pot);
+      const jar = new THREE.Group();
+      add(jar, cyl(0.42, 0.42, 0.85, 18), jam, 0, 0.425, 0);
+      add(jar, cyl(0.45, 0.45, 0.16, 18), mat(0xf7f0e0), 0, 0.93, 0);
+      add(jar, cyl(0.46, 0.46, 0.05, 18), mat(0xd94a4a), 0, 0.97, 0);
+      jar.position.set(5.4, 0, -14.4); g.add(jar);
     },
   },
 };
@@ -996,12 +1390,14 @@ const senseRange = (s) => CFG.sense + Math.min(3, s.ants.length * 0.03) + Math.m
 function pickTarget(s) {
   const n = s.ants.length; const range = senseRange(s); let best = null, bs = Infinity;
   for (const o of objects) {
-    if (!o.alive) continue;
-    const d = Math.hypot(o.x - s.c.x, o.z - s.c.z) - Math.max(o.hx, o.hz) * o.scale;
+    if (!canEat(o)) continue;
+    const d = Math.hypot(o.x - s.c.x, o.z - s.c.z) - Math.max(o.hx, o.hz);
     if (d > range) continue;
     // close food first, so a small swarm eats what it was thrown at; objectives pull a grown swarm from a little further,
-    // and a big swarm leans toward food big enough to feed all of it
-    const score = d - (o.objective ? 2.5 * Math.min(1, n / 12) : 0) - Math.min(n, o.hp) * 0.04;
+    // and a big swarm leans toward food big enough to feed all of it. In a stack, ants on the table go for the
+    // bottom piece and ants on top go for the top one.
+    const dy = Math.max(0, o.y0 - s.c.y - 0.2, s.c.y - o.topY - 0.2);
+    const score = d + dy * 0.8 - (o.objective ? 2.5 * Math.min(1, n / 12) : 0) - Math.min(n, o.hp) * 0.04;
     if (score < bs) { bs = score; best = o; }
   }
   return best;
@@ -1078,7 +1474,7 @@ const eggs3 = [], eggs2 = [];
 function layEggs(o, n) {
   if (n <= 0) return;
   o.cpPop = 1; G.shake = Math.max(G.shake, 0.14);
-  const top = new V3(o.x, o.h * o.scale + 0.15, o.z);
+  const top = new V3(o.x, o.topY + 0.15, o.z);
   shockRing(new V3(o.x, 0, o.z), 0xf4b73a, Math.max(o.hx, o.hz) * 1.6 + 1);
   const k = Math.min(n, 10); // past ten, each egg carries several
   for (let i = 0; i < k; i++) {
@@ -1162,20 +1558,31 @@ const G = { state: 'ready', time: CFG.time, colony: 1, hatched: 1, shots: 0, goa
 const FREE_EVERY = 15;
 const flyers = [], floaters = [];
 let clock = 0, round = 0;
+// objectives by name: most are one object, a stacked one is every piece of its stack
+let goals = [];
 
 function disposeGroup(g) { g.traverse((c) => { if (c.geometry) c.geometry.dispose(); }); }
 function resetGame(idx = levelIdx) {
   levelIdx = clamp(idx | 0, 0, LEVELS.length - 1); saveLevel(); round++;
   const L = LEVELS[levelIdx];
-  for (const o of objects) { if (o.alive) { levelGroup.remove(o.group); disposeGroup(o.group); } if (o.ring) { scene.remove(o.ring); o.ring.material.dispose(); } }
+  for (const o of objects) { if (o.alive) { levelGroup.remove(o.group); disposeGroup(o.group); o.biteMats.forEach((m) => m.dispose()); } if (o.ring) { scene.remove(o.ring); o.ring.material.dispose(); } }
   objects.length = 0; swarms = []; ants.length = 0;
   while (balls.length) removeBall(balls[0]);
   for (const r of rings) scene.remove(r.m); rings.length = 0;
   shards.length = 0; debris.length = 0; eggs3.length = 0; eggs2.length = 0; flyers.length = 0; floaters.length = 0;
   Object.assign(G, { state: 'ready', time: CFG.time, colony: CFG.startAnts, hatched: CFG.startAnts, shots: 0, pendingHatch: 0, flyerCd: 0, shake: 0, freeT: 0 });
   applyWorld(L.world);
+  physicsReset(!!L.physics);
   buildLevel(L);
-  G.goalsTotal = G.goalsLeft = objects.filter((o) => o.objective).length;
+  stepPhysics(0);
+  goals = [];
+  for (const o of objects) {
+    if (!o.objective) continue;
+    let g = goals.find((x) => x.name === o.objective);
+    if (!g) goals.push(g = { name: o.objective, pieces: [], done: false, fill: null, shown: -1 });
+    g.pieces.push(o);
+  }
+  G.goalsTotal = G.goalsLeft = goals.length;
   readyBall = spawnBall();
   for (let i = 0; i < CFG.startAnts; i++) addAntToBall(readyBall, true);
   $('levelChip').textContent = `LEVEL ${levelIdx + 1}`; $('hintMain').textContent = L.hint;
@@ -1236,14 +1643,25 @@ function impact(b) {
   shockRing(P, 0xffffff, 3.2);
   G.shake = Math.max(G.shake, 0.32);
   SFX.shatter();
+  // the hit gives stacked food near it a small shove
+  if (PHYS.on) for (const o of objects) {
+    if (!o.alive || !o.body) continue;
+    const dx = o.x - P.x, dz = o.z - P.z, d = Math.hypot(dx, dz);
+    if (d > 1.6) continue;
+    const k = (1 - d / 1.6) * 0.5 * o.body.mass;
+    o.body.wakeUp(); o.body.applyImpulse(new CANNON.Vec3(dx / (d || 1) * k, k * 0.4, dz / (d || 1) * k));
+  }
 }
 
 // ================= simulation =================
-function bite(o, amt) {
+function bite(o, amt, s) {
   amt = Math.min(amt, o.hp); o.hp -= amt; o.eatT = 0.25;
   if (o.hp <= 1e-4) o.hp = 0;
-  // every checkpoint passed lays its share of the object's eggs
   const eaten = 1 - o.hp / o.maxHp;
+  // chunks come out as it is eaten, never a shrink
+  const want = Math.min(MAX_BITES, Math.ceil(eaten * o.biteBudget));
+  while (o.bites.length < want) addBite(o, s);
+  // every checkpoint passed lays its share of the object's eggs
   while (o.cpDone < o.cps && eaten >= (o.cpDone + 1) / o.cps - 1e-6) {
     o.cpDone++;
     layEggs(o, Math.round(o.eggs * o.cpDone / o.cps) - Math.round(o.eggs * (o.cpDone - 1) / o.cps));
@@ -1251,13 +1669,16 @@ function bite(o, amt) {
   if (o.hp <= 0) killObject(o);
 }
 function killObject(o) {
-  o.alive = false; levelGroup.remove(o.group); disposeGroup(o.group);
+  o.alive = false; levelGroup.remove(o.group); disposeGroup(o.group); o.biteMats.forEach((m) => m.dispose());
   if (o.ring) { scene.remove(o.ring); o.ring.material.dispose(); o.ring = null; }
-  emit(debris, 700, new V3(o.x, o.h * 0.4, o.z), clamp(Math.round(6 + o.maxHp * 0.7), 6, 40), { jit: Math.max(o.hx, o.hz) * 1.2, spread: 4, up: 4.5, life: 1.1, size: 1.3, color: o.color });
+  removeBody(o);
+  emit(debris, 700, new V3(o.x, (o.y0 + o.topY) / 2, o.z), clamp(Math.round(6 + o.maxHp * 0.7), 6, 40), { jit: Math.max(o.hx, o.hz) * 1.2, spread: 4, up: 4.5, life: 1.1, size: 1.3, color: o.color });
   SFX.pop();
-  if (o.objective) {
-    G.goalsLeft--; markGoal(o.objective); SFX.objective(); shockRing(new V3(o.x, 0, o.z), 0xe2462f, 4.2); G.shake = Math.max(G.shake, 0.4);
-    const sp = toScreen(o.x, o.h + 0.6, o.z); floaters.push({ x: sp.x, y: sp.y, text: `${o.objective} eaten!`, t: 0, dur: 1.5, color: COL.signal, size: 22 });
+  // an objective is done when its last piece goes (most are one piece; a stack is many)
+  const g = o.objective && goals.find((x) => x.name === o.objective);
+  if (g && !g.done && g.pieces.every((p) => !p.alive)) {
+    g.done = true; G.goalsLeft--; markGoal(g.name); SFX.objective(); shockRing(new V3(o.x, 0, o.z), 0xe2462f, 4.2); G.shake = Math.max(G.shake, 0.4);
+    const sp = toScreen(o.x, o.topY + 0.6, o.z); floaters.push({ x: sp.x, y: sp.y, text: `${g.name} eaten!`, t: 0, dur: 1.5, color: COL.signal, size: 22 });
     if (G.goalsLeft <= 0) endGame(true);
   }
 }
@@ -1265,17 +1686,21 @@ function killObject(o) {
 function updateObjects(dt) {
   for (const o of objects) {
     if (!o.alive) continue;
-    const s = 0.2 + 0.8 * (o.hp / o.maxHp); o.scale = s;
     // a checkpoint gives the object a quick bump as its eggs pop out
     let bx = 1, by = 1;
     if (o.cpPop > 0) { o.cpPop = Math.max(0, o.cpPop - dt * 3.2); const b = Math.sin((1 - o.cpPop) * Math.PI) * 0.16; bx = 1 + b * 0.6; by = 1 + b; }
     if (o.eatT > 0) {
-      o.eatT -= dt; const w = Math.sin(clock * 38 + o.x * 3) * 0.035; o.group.scale.set(s * bx * (1 + w), s * by * (1 - w * 1.4), s * bx * (1 + w));
+      o.eatT -= dt; const w = Math.sin(clock * 38 + o.x * 3) * 0.035; o.group.scale.set(bx * (1 + w), by * (1 - w * 1.4), bx * (1 + w));
       // crumbs fly off while it is being eaten
       o.crumbT = (o.crumbT || 0) - dt;
-      if (o.crumbT <= 0) { o.crumbT = 0.12; emit(debris, 700, new V3(o.x + (rand() - 0.5) * o.hx, o.h * o.scale, o.z + (rand() - 0.5) * o.hz), 1, { jit: 0.2, spread: 2, up: 3, life: 0.6, size: 0.6, color: o.color }); }
-    } else o.group.scale.set(s * bx, s * by, s * bx);
-    if (o.ring) { o.ring.material.opacity = 0.5 + 0.35 * Math.sin(clock * 4); o.ring.scale.setScalar(o.ring.userData.base * (0.55 + 0.45 * s)); }
+      if (o.crumbT <= 0) { o.crumbT = 0.12; emit(debris, 700, new V3(o.x + (rand() - 0.5) * o.hx, o.topY, o.z + (rand() - 0.5) * o.hz), 1, { jit: 0.2, spread: 2, up: 3, life: 0.6, size: 0.6, color: o.color }); }
+    } else o.group.scale.set(bx, by, bx);
+    if (o.ring) {
+      o.ring.material.opacity = 0.5 + 0.35 * Math.sin(clock * 4);
+      // a stacked objective shows its ring under whichever of its pieces are on the table
+      if (o.body) { o.ring.visible = o.y0 < 0.1; o.ring.position.set(o.x, 0.02, o.z); o.ring.userData.base = Math.max(o.hx, o.hz) + 0.4; }
+      o.ring.scale.setScalar(o.ring.userData.base);
+    }
     if (o.flag) o.flag.rotation.y = Math.sin(clock * 3 + o.x) * 0.3;
     if (o.spin) o.spin.rotation.y = o.kind === 'radar' ? clock * 0.9 : Math.sin(clock * 0.5) * 0.6;
     if (o.anim) o.anim(clock);
@@ -1290,7 +1715,8 @@ function updateSwarms(dt, live) {
     for (const a of s.ants) { cx += a.p.x; cy += a.p.y; cz += a.p.z; }
     s.c.set(cx / n, cy / n, cz / n);
     s.pulse = Math.max(0, s.pulse - dt * 3);
-    if (s.target && !s.target.alive) { s.target = null; s.state = 'move'; s.lead.set(s.c.x, 0, s.c.z); s.think = 0; }
+    // food that is gone, or a stack piece that something has just landed on, is let go
+    if (s.target && !canEat(s.target)) { s.target = null; s.state = 'move'; s.lead.set(s.c.x, 0, s.c.z); s.think = 0; }
     s.think -= dt;
     if (!s.target && s.think <= 0) { s.think = 0.3; const t = pickTarget(s); if (t) setTarget(s, t); }
     if (s.target) { s.idle = false; s.idleT = 0; } else s.idleT += dt;
@@ -1300,10 +1726,12 @@ function updateSwarms(dt, live) {
       if (s.state === 'move') {
         const dx = o.x - s.lead.x, dz = o.z - s.lead.z, d = Math.hypot(dx, dz);
         if (d > 0.001) { const k = Math.min(d, step) / d; s.lead.x += dx * k; s.lead.z += dz * k; }
-        if (d < Math.max(o.hx, o.hz) * o.scale * 0.7 + 0.25) s.state = 'eat';
+        if (d < Math.max(o.hx, o.hz) * 0.7 + 0.25) s.state = 'eat';
       } else if (live) {
+        // stack pieces can drift as they settle; the swarm keeps its centre on its food
+        s.lead.x = o.x; s.lead.z = o.z;
         let eaters = 0; for (const a of s.ants) if (a.atSpot) eaters++;
-        if (eaters) { bite(o, eaters * CFG.eatRate * dt); SFX.crunch(); }
+        if (eaters) { bite(o, eaters * CFG.eatRate * dt, s); SFX.crunch(); }
       }
     } else {
       // no food nearby: join a swarm it can see, otherwise wait while its search widens
@@ -1330,16 +1758,29 @@ function updateAnts(dt) {
       continue;
     }
     const s = a.swarm; let tx, tz; const eating = s.state === 'eat' && s.target && s.target.alive;
-    if (eating) { const o = s.target, k = o.scale * 0.92; tx = o.x + a.spot.x * o.hx * k; tz = o.z + a.spot.y * o.hz * k; }
+    const o = eating ? s.target : null, side = o && o.side;
+    if (side && o.open && o.open.length) {
+      // a buried piece is eaten from the table: each ant takes a place round the open part of its edge
+      const want = Math.atan2(a.spot.y, a.spot.x);
+      let best = o.open[0], bd = Infinity;
+      for (const ang of o.open) { const d = Math.abs(((ang - want + Math.PI * 3) % TAU) - Math.PI); if (d < bd) { bd = d; best = ang; } }
+      // spread round the opening, but never onto a neighbour
+      [tx, tz] = sidePoint(o, best + (a.spot.x * 0.5 + a.spot.y * 0.5) * 0.35);
+      if (!sideFree(o, tx, tz)) [tx, tz] = sidePoint(o, best);
+    } else if (o) { tx = o.x + a.spot.x * o.hx * 0.92; tz = o.z + a.spot.y * o.hz * 0.92; }
     else { tx = s.lead.x + a.off.x * s.r; tz = s.lead.z + a.off.y * s.r; }
     const dx = tx - a.p.x, dz = tz - a.p.z, d = Math.hypot(dx, dz);
     a.atSpot = d < 0.32;
     const moving = d > 0.08;
     if (d > 0.02) { const st = Math.min(d, CFG.antSpeed * a.spd * dt); a.p.x += dx / d * st; a.p.z += dz / d * st; }
     if (moving) a.yaw = lerpAngle(a.yaw, Math.atan2(dx, dz), Math.min(1, dt * 12));
+    else if (side) a.yaw = lerpAngle(a.yaw, Math.atan2(o.x - a.p.x, o.z - a.p.z), Math.min(1, dt * 8));
     else a.yaw += Math.sin(a.ph * 0.6) * dt * 1.6;
     a.ph += dt * (moving ? 24 : 10);
-    a.p.y += (heightAt(a.p.x, a.p.z) - a.p.y) * Math.min(1, dt * 14);
+    // side eaters stay on the table even where the stack overhangs them; top eaters sink into the bites
+    let gy = side && a.atSpot ? o.y0 : heightAt(a.p.x, a.p.z);
+    if (o && !side && a.atSpot) gy = biteFloor(o, a.p.x, a.p.z, gy);
+    a.p.y += (gy - a.p.y) * Math.min(1, dt * 14);
     a.pitch = eating && a.atSpot ? 0.28 + Math.sin(a.ph) * 0.22 : 0;
     a.roll = moving ? Math.sin(a.ph) * 0.14 : 0;
   }
@@ -1525,7 +1966,7 @@ function drawOverlay() {
   for (const s of swarms) {
     const o = s.target;
     const p = s.state === 'eat' && o && o.alive
-      ? toScreen(o.x, 0, o.z + o.hz * o.scale + 0.75)
+      ? toScreen(o.x, 0, o.z + o.hz + 0.75)
       : toScreen(s.c.x, s.c.y + 0.6 + s.r * 0.3, s.c.z);
     const size = (s.idle ? 12 : 13) + s.pulse * 5;
     if (s.idle) countPill(p.x, p.y, '', s.ants.length, { bg: '#dcd6c3', fg: 'rgba(31,39,22,0.62)', size, ring: 'rgba(31,39,22,0.35)' });
@@ -1582,10 +2023,10 @@ const timerEl = $('timer'), colonyCountEl = $('colonyCount'), colonyRingEl = $('
 const RING_LEN = 2 * Math.PI * 31;
 function buildGoalsUI() {
   const wrap = $('goals'); wrap.innerHTML = '';
-  for (const o of objects.filter((x) => x.objective)) {
-    const el = document.createElement('div'); el.className = 'goal'; el.dataset.goal = o.objective;
-    el.innerHTML = `<span class="tgt"></span><span class="name">${o.objective}</span><span class="meter"><i></i></span>`;
-    o.goalFill = el.querySelector('.meter i'); o.goalShown = -1;
+  for (const g of goals) {
+    const el = document.createElement('div'); el.className = 'goal'; el.dataset.goal = g.name;
+    el.innerHTML = `<span class="tgt"></span><span class="name">${g.name}</span><span class="meter"><i></i></span>`;
+    g.fill = el.querySelector('.meter i'); g.shown = -1;
     wrap.appendChild(el);
   }
 }
@@ -1599,11 +2040,12 @@ function updateHUD() {
   colonyEl.classList.toggle('trickle', !!CFG.freeAnt);
   const prog = CFG.freeAnt ? clamp(G.freeT / FREE_EVERY, 0, 1) : 0;
   if (Math.abs(prog - hud.ring) > 0.004) { hud.ring = prog; colonyRingEl.setAttribute('stroke-dashoffset', (RING_LEN * (1 - prog)).toFixed(1)); }
-  // each objective's bar fills as it is eaten
-  for (const o of objects) {
-    if (!o.objective || !o.goalFill) continue;
-    const f = 1 - o.hp / o.maxHp;
-    if (Math.abs(f - o.goalShown) > 0.004) { o.goalShown = f; o.goalFill.style.width = `${Math.max(f > 0 ? 14 : 0, f * 100).toFixed(1)}%`; }
+  // each objective's bar fills as it is eaten (a stack counts every piece)
+  for (const g of goals) {
+    if (!g.fill) continue;
+    let hp = 0, max = 0; for (const p of g.pieces) { hp += p.hp; max += p.maxHp; }
+    const f = 1 - hp / max;
+    if (Math.abs(f - g.shown) > 0.004) { g.shown = f; g.fill.style.width = `${Math.max(f > 0 ? 14 : 0, f * 100).toFixed(1)}%`; }
   }
 }
 
@@ -1692,8 +2134,10 @@ function step(dt) {
   if (G.state === 'play') { G.time -= dt; if (G.time <= 0) { G.time = 0; endGame(false); } }
   if (G.state === 'play' && CFG.freeAnt) { G.freeT += dt; if (G.freeT >= FREE_EVERY) { G.freeT -= FREE_EVERY; hatchEggs(1); } }
   const live = G.state === 'ready' || G.state === 'play';
+  stepPhysics(dt);
   rebuildHeight();
   updateObjects(dt);
+  updateBites(dt);
   updateSwarms(dt, live);
   updateAnts(dt);
   updateBalls(dt);
@@ -1723,7 +2167,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
 
 // handle for quick balance experiments from the console
 window.swarmSiege = {
-  CFG, G, objects, ants, get swarms() { return swarms; }, get eggs() { return eggs3.length + eggs2.length; }, get ballAnts() { return readyBall ? readyBall.ants.length : 0; },
+  CFG, G, objects, ants, PHYS, camera, CAM_LOOK, get goals() { return goals; }, get swarms() { return swarms; }, get eggs() { return eggs3.length + eggs2.length; }, get ballAnts() { return readyBall ? readyBall.ants.length : 0; },
   fire: (x, z) => fire(new V3(x, 0, z)), reset: () => resetGame(), setLevel: (i) => resetGame(i), get level() { return levelIdx; }, LEVELS,
   advance(sec, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) step(dt); draw(); },
 };
