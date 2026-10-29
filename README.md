@@ -13,10 +13,11 @@ The tuning panel (beside the game on desktop, behind the sliders button on a pho
 
 A rules variant lives at [/v1/](https://keremreboot.github.io/swarm-siege/v1/), with the same two levels:
 - Ants never die. A swarm with nothing nearby slowly looks further out until it finds food.
-- Any swarm can eat anything. More ants eat it faster.
+- Any swarm can eat anything. More ants eat it faster. A swarm too small to get eggs out of its food soon (one ant on the HQ, say) goes looking for snacks instead.
 - Every object is worth a set number of eggs, laid in batches at checkpoints as it is eaten. The eggs pop out, then fly to the colony and hatch into the next ball.
 - Nothing is written on the objects. The objective chips at the top show how much of each objective has been eaten.
 - The objectives are bigger (Radar 100 bites, Tank 240, HQ 400; Burger 120, Melon 260, Cake 400), so growing the colony before going for them pays off.
+- Paced for a 2 to 2.5 minute clear: ants bite 0.25 food a second, the clock is 3:00, and the colony grows slowly for the first minute before it snowballs.
 
 Its tuning panel adds bite speed, egg value, the number of egg checkpoints and how fast an idle swarm's search grows. Its settings are saved separately from the original.
 

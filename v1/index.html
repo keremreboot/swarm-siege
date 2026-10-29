@@ -202,7 +202,7 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
     <div class="hud">
       <div class="hud-top">
         <div id="levelChip" class="level-chip">LEVEL 1</div>
-        <div id="timer" class="timer idle">1:15</div>
+        <div id="timer" class="timer idle">3:00</div>
         <div class="top-btns">
           <button id="soundBtn" class="icon-btn" type="button" aria-label="Mute sound" aria-pressed="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path id="soundWaves" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
@@ -255,8 +255,8 @@ body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink);
       <div id="levelPick" class="seg" role="group" aria-labelledby="levelLabel"></div>
     </div>
     <p class="note">Bite speed, walk speed, sight and search growth change live. Time, egg value, checkpoints and starting ants apply when you restart.</p>
-    <div class="field"><label for="t-time">Time limit <output id="o-time"></output></label><input type="range" id="t-time" min="30" max="180" step="5"></div>
-    <div class="field"><label for="t-eat">Bite speed <output id="o-eat"></output></label><input type="range" id="t-eat" min="0.2" max="4" step="0.1"><small>Food each ant eats per second</small></div>
+    <div class="field"><label for="t-time">Time limit <output id="o-time"></output></label><input type="range" id="t-time" min="30" max="300" step="5"></div>
+    <div class="field"><label for="t-eat">Bite speed <output id="o-eat"></output></label><input type="range" id="t-eat" min="0.1" max="2" step="0.05"><small>Food each ant eats per second</small></div>
     <div class="field"><label for="t-egg">Egg value <output id="o-egg"></output></label><input type="range" id="t-egg" min="0.25" max="3" step="0.05"><small>Multiplies how many eggs every object is worth</small></div>
     <div class="field"><label for="t-cp">Egg checkpoints <output id="o-cp"></output></label><input type="range" id="t-cp" min="0" max="8" step="1"><small>How many batches an object lays its eggs in. Auto gives bigger objects more.</small></div>
     <div class="field"><label for="t-speed">Ant walk speed <output id="o-speed"></output></label><input type="range" id="t-speed" min="1" max="5" step="0.1"></div>
@@ -291,11 +291,12 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ================= tuning =================
-// v1 keeps its own saved settings, apart from the original game on the same site
-const DEFAULTS = { time: 60, eatRate: 1, eggScale: 1, checkpoints: 0, antSpeed: 2.4, startAnts: 1, sense: 3.2, roam: 0.5 };
+// v1 keeps its own saved settings, apart from the original game on the same site; the key changes
+// whenever the defaults are rebalanced, so sliders saved under an older balance do not hide the new one
+const DEFAULTS = { time: 180, eatRate: 0.25, eggScale: 1, checkpoints: 0, antSpeed: 2.4, startAnts: 1, sense: 3.2, roam: 0.5 };
 const CFG = { ...DEFAULTS };
-try { Object.assign(CFG, JSON.parse(localStorage.getItem('swarm-siege-v1-cfg') || '{}')); } catch (e) { /* storage blocked */ }
-const saveCfg = () => { try { localStorage.setItem('swarm-siege-v1-cfg', JSON.stringify(CFG)); } catch (e) { /* ignore */ } };
+try { Object.assign(CFG, JSON.parse(localStorage.getItem('swarm-siege-v1-cfg-2') || '{}')); } catch (e) { /* storage blocked */ }
+const saveCfg = () => { try { localStorage.setItem('swarm-siege-v1-cfg-2', JSON.stringify(CFG)); } catch (e) { /* ignore */ } };
 let levelIdx = 0;
 try { levelIdx = parseInt(localStorage.getItem('swarm-siege-v1-level') || '0', 10) || 0; } catch (e) { /* storage blocked */ }
 const saveLevel = () => { try { localStorage.setItem('swarm-siege-v1-level', String(levelIdx)); } catch (e) { /* ignore */ } };
@@ -731,17 +732,18 @@ const BUILD = {
     };
   },
 };
-// any swarm can eat anything. hp: bites it takes; eggs: what it is worth, laid in cp even batches as it is eaten
+// any swarm can eat anything. hp: bites it takes; eggs: what it is worth, laid in cp even batches as it is eaten.
+// Tuned with the 0.25 bite speed for a two to two-and-a-half minute clear on either level.
 const KINDS = {
-  sandbags: { hp: 3, eggs: 2, cp: 1 }, barrel: { hp: 3, eggs: 2, cp: 1 }, crate: { hp: 3, eggs: 2, cp: 1 },
-  drums: { hp: 7, eggs: 4, cp: 2 }, crates: { hp: 10, eggs: 6, cp: 2 }, wall: { hp: 14, eggs: 7, cp: 2 }, tent: { hp: 20, eggs: 10, cp: 3 },
-  jeep: { hp: 26, eggs: 12, cp: 3 }, tower: { hp: 32, eggs: 14, cp: 4 }, truck: { hp: 40, eggs: 16, cp: 4 },
+  sandbags: { hp: 2, eggs: 1, cp: 1 }, barrel: { hp: 2, eggs: 1, cp: 1 }, crate: { hp: 2, eggs: 1, cp: 1 },
+  drums: { hp: 7, eggs: 2, cp: 2 }, crates: { hp: 10, eggs: 3, cp: 2 }, wall: { hp: 14, eggs: 4, cp: 2 }, tent: { hp: 20, eggs: 5, cp: 3 },
+  jeep: { hp: 26, eggs: 6, cp: 3 }, tower: { hp: 32, eggs: 7, cp: 4 }, truck: { hp: 40, eggs: 8, cp: 4 },
   // objectives are big on purpose: a few early ants barely dent them, so growing the colony first pays
-  radar: { hp: 100, eggs: 10, cp: 4, objective: 'Radar' }, tank: { hp: 240, eggs: 18, cp: 5, objective: 'Tank' }, hq: { hp: 400, eggs: 24, cp: 6, objective: 'HQ' },
-  sugar: { hp: 3, eggs: 2, cp: 1 }, cherry: { hp: 3, eggs: 2, cp: 1 }, cookie: { hp: 3, eggs: 2, cp: 1 }, candy: { hp: 3, eggs: 2, cp: 1 },
-  donut: { hp: 7, eggs: 4, cp: 2 }, cupcake: { hp: 10, eggs: 6, cp: 2 }, chocbar: { hp: 14, eggs: 7, cp: 2 }, cheese: { hp: 20, eggs: 10, cp: 3 },
-  sandwich: { hp: 26, eggs: 12, cp: 3 }, shake: { hp: 32, eggs: 14, cp: 4 }, pizza: { hp: 40, eggs: 16, cp: 4 },
-  burger: { hp: 120, eggs: 10, cp: 4, objective: 'Burger' }, melon: { hp: 260, eggs: 18, cp: 5, objective: 'Melon' }, cake: { hp: 400, eggs: 24, cp: 6, objective: 'Cake' },
+  radar: { hp: 100, eggs: 5, cp: 4, objective: 'Radar' }, tank: { hp: 240, eggs: 9, cp: 5, objective: 'Tank' }, hq: { hp: 400, eggs: 12, cp: 6, objective: 'HQ' },
+  sugar: { hp: 2, eggs: 1, cp: 1 }, cherry: { hp: 2, eggs: 1, cp: 1 }, cookie: { hp: 2, eggs: 1, cp: 1 }, candy: { hp: 2, eggs: 1, cp: 1 },
+  donut: { hp: 7, eggs: 2, cp: 2 }, cupcake: { hp: 10, eggs: 3, cp: 2 }, chocbar: { hp: 14, eggs: 4, cp: 2 }, cheese: { hp: 20, eggs: 5, cp: 3 },
+  sandwich: { hp: 26, eggs: 6, cp: 3 }, shake: { hp: 32, eggs: 7, cp: 4 }, pizza: { hp: 40, eggs: 8, cp: 4 },
+  burger: { hp: 120, eggs: 5, cp: 4, objective: 'Burger' }, melon: { hp: 260, eggs: 9, cp: 5, objective: 'Melon' }, cake: { hp: 400, eggs: 12, cp: 6, objective: 'Cake' },
 };
 
 // ================= levels =================
@@ -972,7 +974,7 @@ function addAntToBall(b, instant) {
 }
 
 function newSwarm(P) {
-  const s = { id: ++swarmSeq, ants: [], c: P.clone(), lead: new V3(P.x, 0, P.z), r: 0.2, target: null, state: 'move', think: 0, pulse: 1, idleT: 0 };
+  const s = { id: ++swarmSeq, ants: [], c: P.clone(), lead: new V3(P.x, 0, P.z), r: 0.2, target: null, state: 'move', think: 0, pulse: 1, idleT: 0, slowT: 0 };
   swarms.push(s); return s;
 }
 function setTarget(s, o) {
@@ -980,16 +982,21 @@ function setTarget(s, o) {
   for (const a of s.ants) a.spot.set(rand() * 2 - 1, rand() * 2 - 1);
 }
 // swarms only notice food and other swarms near them, so where a ball lands matters;
-// a swarm with nothing to do slowly widens its search, so ants that never die never sit idle for good
-const senseRange = (s) => CFG.sense + Math.min(3, s.ants.length * 0.03) + Math.max(0, s.idleT - 2) * CFG.roam;
+// a swarm with nothing to do (or stuck on food far too big for it) slowly widens its search,
+// so ants that never die never sit idle for good
+const senseRange = (s) => CFG.sense + Math.min(3, s.ants.length * 0.03) + Math.max(0, Math.max(s.idleT, s.slowT) - 2) * CFG.roam;
+// seconds until n ants eating o reach its next egg checkpoint
+const payWait = (o, n) => Math.max(0, o.hp - o.maxHp * (1 - (o.cpDone + 1) / o.cps)) / (n * CFG.eatRate);
+const SLOW_PAY = 20;
 function pickTarget(s) {
   const n = s.ants.length; const range = senseRange(s); let best = null, bs = Infinity;
   for (const o of objects) {
     if (!o.alive) continue;
     const d = Math.hypot(o.x - s.c.x, o.z - s.c.z) - Math.max(o.hx, o.hz) * o.scale;
     if (d > range) continue;
-    // close food first; a big swarm leans toward food big enough to feed all of it, and toward objectives
-    const score = d - (o.objective ? 2.5 * Math.min(1, n / 12) : 0) - Math.min(n, o.hp) * 0.04;
+    // close food first; a big swarm leans toward food big enough to feed all of it, and toward objectives;
+    // food that would take this swarm ages to get a single egg out of loses out, so a lone ant on the HQ goes for snacks
+    const score = d - (o.objective ? 2.5 * Math.min(1, n / 12) : 0) - Math.min(n, o.hp) * 0.04 + Math.max(0, payWait(o, n) - 8) * 0.06;
     if (score < bs) { bs = score; best = o; }
   }
   return best;
@@ -1279,6 +1286,11 @@ function updateSwarms(dt, live) {
     if (s.target && !s.target.alive) { s.target = null; s.state = 'move'; s.lead.set(s.c.x, 0, s.c.z); s.think = 0; }
     s.think -= dt;
     if (!s.target && s.think <= 0) { s.think = 0.3; const t = pickTarget(s); if (t) setTarget(s, t); }
+    // too few ants to get eggs out of their food any time soon: keep looking, further and further, for something better
+    if (s.target && payWait(s.target, n) > SLOW_PAY) {
+      s.slowT += dt;
+      if (s.think <= 0) { s.think = 1; const t = pickTarget(s); if (t && t !== s.target) setTarget(s, t); }
+    } else s.slowT = 0;
     if (s.target) { s.idle = false; s.idleT = 0; } else s.idleT += dt;
     const step = CFG.antSpeed * 0.85 * dt;
     if (s.target) {
@@ -1615,7 +1627,7 @@ $('nextBtn').addEventListener('click', () => { ensureAudio(); resetGame((levelId
 // ================= tuning panel =================
 const TUNE = [
   ['time', 't-time', 'o-time', (v) => fmtTime(v)],
-  ['eatRate', 't-eat', 'o-eat', (v) => v.toFixed(1)],
+  ['eatRate', 't-eat', 'o-eat', (v) => v.toFixed(2)],
   ['eggScale', 't-egg', 'o-egg', (v) => '×' + v.toFixed(2)],
   ['checkpoints', 't-cp', 'o-cp', (v) => (v ? String(v) : 'Auto')],
   ['antSpeed', 't-speed', 'o-speed', (v) => v.toFixed(1)],
