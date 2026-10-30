@@ -24,4 +24,18 @@ A rules variant lives at [/v1/](https://keremreboot.github.io/swarm-siege/v1/), 
 
 Its tuning panel adds bite speed, egg value, the number of egg checkpoints, how fast an idle swarm's search grows, and an optional free ant: when it is on, the colony hatches one ant every 15 seconds and its rim fills toward the next one, so a stuck colony can still throw. Its settings are saved separately from the original.
 
+## Carry version (the `carry` branch)
+
+On this branch, `v1/index.html` is an alternate of version 1 where food is carried home instead of eaten. Same three levels, same island, camera and cannon:
+- Every level has ant holes along its front edge: two on the Army base, one on the Picnic, three on Sweet stacks.
+- Every piece of food takes a number of ants to lift. Food that takes three or more shows the number over it, green once the next ball has that many. Objectives show their name and number: Radar 18, Tank 36, HQ 60; Burger 15, Melon 30, Cake 50. In Sweet stacks the cake's tiers take 12, 20 and 30, and a stack is carried off a piece at a time from the top. The chips at the top show how many ants each objective takes right now, and turn green when the next ball has enough.
+- A swarm only goes for food it has the ants for, and sends exactly that many; the rest look for more. Swarms with nothing to do merge when they meet.
+- Carriers haul their food to the nearest hole at 0.8 m/s, round anything taller than a snack (big pieces are wider than any gap, so they go straight over). Down the hole it goes: the carriers fly back into the cannon with the new ants it hatches. A snack doubles its one carrier; bigger food gives a little less per carrier, but more at once.
+- Ants never die. A swarm with nothing it can lift nearby waits 2.5 seconds, then walks to a hole and rejoins the ball.
+- No eating, bites or eggs.
+- Paced for a clear in about 2:05 to 2:15 played well on each level, on the 3:00 clock. Throwing every ball at random food still clears the Picnic in about 2:40.
+- Sweet stacks uses cannon-es's naive broadphase. With sweep-and-prune, the cake's tiers fell through each other as soon as they woke, and the bottom tier was thrown into the air; version 1 on `main` still has that.
+
+The tuning panel swaps bite speed, egg value and checkpoints for carry speed, ants per food and ants needed, and search growth for the wait before heading home. Its settings are saved apart from version 1.
+
 Everything is in `index.html` (and `v1/index.html`); it loads three.js, Google Fonts and (in v1) cannon-es from CDNs.
