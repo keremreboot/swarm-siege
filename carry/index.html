@@ -1,0 +1,2184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Swarm Siege, carry version: launch glass balls of ants that carry food down ant holes. Every piece takes a number of ants to lift, and every piece brought home hatches more ants.">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<title>Swarm Siege Carry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Rubik:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: a phone-shaped game stage centred in the window. On wide screens the tuning sheet sits beside it; on phones it opens over the game. */
+:root {
+  /* page chrome */
+  --page: #cfdcbc;
+  --page-ink: #26301b;
+  --page-muted: #566447;
+  --sheet: #f8f7ee;
+  --sheet-line: #d6dac5;
+  --bezel: #1d2416;
+  --shadow: rgba(38, 48, 27, .35);
+  --focus: #2f6fd1;
+  /* game world: one look in both themes */
+  --ink: #1f2716;
+  --ink-70: rgba(31, 39, 22, .74);
+  --cream: #fff8e6;
+  --olive: #56662c;
+  --signal: #e2462f;
+  --honey: #f4b73a;
+  --leaf: #47a547;
+  --sky: #bfe0ea;
+  --font-display: "Lilita One", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "Rubik", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #12160d; --page-ink: #e4ead8; --page-muted: #a3b08f; --sheet: #1d2317;
+    --sheet-line: #343d29; --bezel: #05070a; --shadow: rgba(0, 0, 0, .6); --focus: #7fb0ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #12160d; --page-ink: #e4ead8; --page-muted: #a3b08f; --sheet: #1d2317;
+  --sheet-line: #343d29; --bezel: #05070a; --shadow: rgba(0, 0, 0, .6); --focus: #7fb0ff;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html { height: 100%; box-sizing: border-box; }
+*, *::before, *::after { box-sizing: inherit; }
+body { height: 100%; margin: 0; background: var(--page); color: var(--page-ink); font-family: var(--font-body); overflow: hidden; }
+
+#stage { height: 100%; display: flex; align-items: center; justify-content: center; gap: 32px; }
+#game {
+  position: relative; height: 100%; aspect-ratio: 9 / 19.5; max-width: 100%; overflow: hidden;
+  background: var(--sky); touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#gl, #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#gl { cursor: crosshair; }
+#fx { pointer-events: none; }
+
+/* ---------- HUD ---------- */
+.hud { position: absolute; inset: 0; pointer-events: none; color: var(--ink); }
+.hud-top { position: absolute; top: 12px; left: 16px; right: 16px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.level-chip {
+  justify-self: start; font-family: var(--font-display); font-size: 15px; letter-spacing: .06em; color: var(--cream);
+  background: var(--olive); padding: 6px 10px 5px; border-radius: 10px; box-shadow: 0 3px 0 rgba(0, 0, 0, .25);
+}
+.timer {
+  font-family: var(--font-display); font-size: 30px; line-height: 1; color: var(--cream); background: var(--ink-70);
+  padding: 6px 14px 5px; border-radius: 14px; min-width: 94px; text-align: center; font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .3);
+}
+.timer.low { background: var(--signal); animation: throb .5s ease-in-out infinite alternate; }
+.timer.idle { opacity: .85; }
+.top-btns { justify-self: end; display: flex; gap: 6px; }
+.icon-btn {
+  pointer-events: auto; width: 40px; height: 40px; border-radius: 12px; border: 0; background: var(--cream); color: var(--ink);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .25); display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.icon-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .25); }
+.icon-btn:focus-visible, .btn:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.icon-btn svg { width: 22px; height: 22px; }
+
+/* three chips always fit one row, so none of them sits over the far end of the island */
+.goals { position: absolute; top: 64px; left: 16px; right: 16px; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.goal {
+  display: grid; grid-template-columns: 18px auto; grid-template-areas: "tgt name" "tgt meter"; column-gap: 6px; row-gap: 3px; align-items: center;
+  background: var(--cream); border-radius: 12px; padding: 5px 10px 6px 6px;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .2); font-weight: 800; font-size: 12px; line-height: 1; letter-spacing: .05em; text-transform: uppercase;
+  transition: background .25s, color .25s;
+}
+.goal .tgt { grid-area: tgt; width: 18px; height: 18px; border-radius: 50%;
+  background: radial-gradient(circle, var(--signal) 0 3px, var(--cream) 3.5px 5.5px, var(--signal) 6px); }
+.goal .name { grid-area: name; }
+/* how many ants it takes to carry the objective off right now, under its name; green once the next ball has that many */
+.goal .need { grid-area: meter; display: flex; align-items: center; gap: 2px; font-family: var(--font-display); font-weight: 400; font-size: 14px; letter-spacing: 0; color: var(--signal); }
+.goal .need svg { width: 15px; height: 15px; }
+.goal .need b { font-weight: 400; }
+.goal.can .need { color: var(--leaf); }
+.goal.done { background: var(--leaf); color: var(--cream); }
+.goal.done .name { text-decoration: line-through; text-decoration-thickness: 2px; }
+.goal.done .need { display: none; }
+.goal.done .tgt { background: var(--cream); -webkit-mask: none; position: relative; }
+.goal.done .tgt::after { content: ""; position: absolute; left: 6px; top: 3px; width: 5px; height: 9px; border: solid var(--leaf); border-width: 0 3px 3px 0; transform: rotate(45deg); }
+
+.colony { position: absolute; left: 16px; bottom: 20px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.colony-dial { position: relative; width: 74px; height: 74px; border-radius: 50%; box-shadow: 0 4px 0 rgba(0, 0, 0, .22); }
+.colony-dial svg.ringsvg { position: absolute; inset: 0; }
+.colony .track { fill: var(--cream); stroke: var(--honey); stroke-width: 7; }
+/* with the free ant on, the rim becomes a clock that fills toward the next one */
+.colony .ring { fill: none; stroke: var(--honey); stroke-width: 7; stroke-linecap: round; display: none; }
+.colony.trickle .track { stroke: rgba(31, 39, 22, .16); }
+.colony.trickle .ring { display: inline; }
+.colony-core { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.colony-core svg { width: 26px; height: 26px; color: var(--ink); }
+.colony-core b { font-family: var(--font-display); font-weight: 400; font-size: 19px; font-variant-numeric: tabular-nums; }
+.colony-label {
+  font-family: var(--font-display); font-size: 12px; letter-spacing: .08em; color: var(--cream); background: var(--ink-70);
+  padding: 3px 8px 2px; border-radius: 8px; text-transform: uppercase;
+}
+.colony.pop .colony-dial { animation: pop .22s ease-out; }
+#game[data-world="picnic"] .level-chip { background: #3466b2; }
+#game[data-world="table"] .level-chip { background: #b4532a; }
+
+.hint {
+  position: absolute; left: 50%; bottom: 18.5%; transform: translateX(-50%); background: var(--ink-70); color: var(--cream);
+  padding: 9px 14px; border-radius: 12px; font-weight: 700; font-size: 14px; white-space: nowrap; text-align: center;
+}
+.hint small { display: block; font-weight: 500; font-size: 12px; opacity: .85; margin-top: 2px; }
+
+.result { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(20, 26, 14, .5); pointer-events: auto; padding: 16px; }
+.result-card {
+  width: min(320px, 100%); background: var(--cream); color: var(--ink); border-radius: 22px; padding: 22px 20px 18px;
+  box-shadow: 0 8px 0 rgba(0, 0, 0, .25); text-align: center; animation: rise .35s cubic-bezier(.2, 1.4, .4, 1);
+}
+.result-card h2 { font-family: var(--font-display); font-weight: 400; font-size: 34px; margin: 0 0 4px; letter-spacing: .02em; text-wrap: balance; }
+.result-card.win h2 { color: var(--leaf); }
+.result-card.lose h2 { color: var(--signal); }
+.result-card p { margin: 0 0 14px; font-size: 14px; color: var(--olive); font-weight: 700; }
+.stats { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; text-align: left; font-size: 14px; margin: 0 0 18px; padding: 12px 14px; border-radius: 14px; background: rgba(86, 102, 44, .1); }
+.stats dt { font-weight: 700; color: var(--olive); }
+.stats dd { margin: 0; font-family: var(--font-display); font-size: 17px; font-variant-numeric: tabular-nums; text-align: right; }
+
+.btn {
+  font: 800 15px/1 var(--font-body); letter-spacing: .02em; border: 0; border-radius: 14px; padding: 13px 18px; cursor: pointer;
+  background: var(--sheet-line); color: var(--page-ink); box-shadow: 0 3px 0 rgba(0, 0, 0, .2);
+}
+.btn.primary { background: var(--honey); color: var(--ink); }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .2); }
+.result-card .btn { width: 100%; font-size: 17px; padding: 15px; }
+.result-actions { display: grid; gap: 8px; }
+.result-card .btn:not(.primary) { background: rgba(86, 102, 44, .14); color: var(--ink); }
+
+/* ---------- tuning sheet ---------- */
+.tuning { width: 300px; flex: none; background: var(--sheet); color: var(--page-ink); border-radius: 20px; padding: 20px; box-shadow: 0 10px 40px var(--shadow); max-height: calc(100% - 32px); overflow-y: auto; }
+.tuning header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tuning h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin: 0; letter-spacing: .02em; }
+.tuning h2 .ver { font: 800 12px/1 var(--font-body); letter-spacing: .04em; background: var(--olive); color: #fff8e6; padding: 4px 7px 3px; border-radius: 8px; vertical-align: 4px; }
+.tuning .note { margin: 6px 0 16px; font-size: 13px; color: var(--page-muted); line-height: 1.45; }
+.field { display: grid; gap: 4px; margin-bottom: 14px; }
+.field label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
+.field output { font-family: var(--font-display); font-weight: 400; font-size: 15px; font-variant-numeric: tabular-nums; }
+.field small { font-size: 12px; color: var(--page-muted); }
+.field input { width: 100%; accent-color: var(--olive); }
+.field.toggle label { align-items: center; gap: 12px; cursor: pointer; }
+.field.toggle input { width: 22px; height: 22px; flex: none; margin: 0; cursor: pointer; }
+.field-title { font-size: 13px; font-weight: 700; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.seg button {
+  font: 700 13px/1.2 var(--font-body); border: 0; border-radius: 12px; padding: 10px 8px; cursor: pointer;
+  background: var(--sheet-line); color: var(--page-ink); box-shadow: 0 2px 0 rgba(0, 0, 0, .18);
+}
+.seg button[aria-pressed="true"] { background: var(--olive); color: var(--cream); }
+.seg button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.actions { display: flex; gap: 8px; margin: 4px 0 18px; }
+.actions .btn { flex: 1; }
+.howto { border-top: 1px solid var(--sheet-line); padding-top: 14px; }
+.howto h3 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin: 0 0 8px; color: var(--page-muted); }
+.howto ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.5; display: grid; gap: 6px; }
+.close-btn { display: none; }
+
+@media (min-width: 760px) {
+  #stage { padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  #game { border-radius: 30px; box-shadow: 0 0 0 7px var(--bezel), 0 24px 60px var(--shadow); }
+  #tuneBtn { display: none; }
+}
+@media (max-width: 759.98px) {
+  .tuning {
+    position: fixed; inset: auto 0 0 0; width: auto; max-height: 82%; border-radius: 20px 20px 0 0; z-index: 20;
+    padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    transform: translateY(105%); transition: transform .25s ease;
+  }
+  .tuning.open { transform: none; }
+  .close-btn { display: grid; }
+}
+
+@keyframes throb { from { transform: scale(1); } to { transform: scale(1.08); } }
+@keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes rise { from { transform: translateY(30px) scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .timer.low, .colony.pop .colony-dial, .result-card { animation: none; }
+  .tuning { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="game">
+    <canvas id="gl" aria-label="Game view. Tap the base to launch the ant ball."></canvas>
+    <canvas id="fx" aria-hidden="true"></canvas>
+    <div class="hud">
+      <div class="hud-top">
+        <div id="levelChip" class="level-chip">LEVEL 1</div>
+        <div id="timer" class="timer idle">3:00</div>
+        <div class="top-btns">
+          <button id="soundBtn" class="icon-btn" type="button" aria-label="Mute sound" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path id="soundWaves" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+          </button>
+          <button id="tuneBtn" class="icon-btn" type="button" aria-label="Open tuning" aria-controls="tuning">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="9" cy="6" r="2.2" fill="currentColor"/><circle cx="15" cy="12" r="2.2" fill="currentColor"/><circle cx="8" cy="18" r="2.2" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="goals" class="goals" aria-label="Objectives"></div>
+      <div id="colony" class="colony" aria-live="polite">
+        <div class="colony-dial">
+          <svg class="ringsvg" viewBox="0 0 74 74"><circle class="track" cx="37" cy="37" r="31"/><circle id="colonyRing" class="ring" cx="37" cy="37" r="31" transform="rotate(-90 37 37)" stroke-dasharray="194.8" stroke-dashoffset="194.8"/></svg>
+          <div class="colony-core">
+            <svg viewBox="0 0 32 32" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M13 16l-4-6M13 16l-4 6M16 16l0-7M16 16l0 7M19 16l4-6M19 16l4 6M22.5 14l3-5M22.5 18l3 5" fill="none"/><ellipse cx="9" cy="16" rx="5" ry="3.8" stroke="none"/><ellipse cx="16" cy="16" rx="2.8" ry="2.4" stroke="none"/><circle cx="22" cy="16" r="2.9" stroke="none"/></svg>
+            <b id="colonyCount">1</b>
+          </div>
+        </div>
+        <div class="colony-label">Colony</div>
+      </div>
+      <div id="hint" class="hint"><span id="hintMain">Tap the base to launch your ant</span><small>Ants carry food home, and food hatches more ants</small></div>
+    </div>
+    <div id="result" class="result" hidden>
+      <div id="resultCard" class="result-card">
+        <h2 id="resultTitle">Base cleared</h2>
+        <p id="resultSub">Every objective eaten</p>
+        <dl class="stats">
+          <dt>Time left</dt><dd id="rsTime">0:00</dd>
+          <dt>Objectives</dt><dd id="rsGoals">3 / 3</dd>
+          <dt>Ants hatched</dt><dd id="rsColony">0</dd>
+          <dt>Balls launched</dt><dd id="rsShots">0</dd>
+        </dl>
+        <div class="result-actions">
+          <button id="nextBtn" class="btn primary" type="button">Next level</button>
+          <button id="againBtn" class="btn" type="button">Replay</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside id="tuning" class="tuning" aria-label="Tuning">
+    <header>
+      <h2>Tuning <span class="ver">carry</span></h2>
+      <button id="tuneClose" class="icon-btn close-btn" type="button" aria-label="Close tuning">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="field">
+      <span id="levelLabel" class="field-title">Level</span>
+      <div id="levelPick" class="seg" role="group" aria-labelledby="levelLabel"></div>
+    </div>
+    <p class="note">Carry speed, walk speed, sight and the wait before heading home change live. Time, ants needed, ants per food and starting ants apply when you restart.</p>
+    <div class="field"><label for="t-time">Time limit <output id="o-time"></output></label><input type="range" id="t-time" min="30" max="300" step="5"></div>
+    <div class="field"><label for="t-carry">Carry speed <output id="o-carry"></output></label><input type="range" id="t-carry" min="0.4" max="3" step="0.1"><small>How fast carriers haul food to a hole</small></div>
+    <div class="field"><label for="t-gift">Ants per food <output id="o-gift"></output></label><input type="range" id="t-gift" min="0.25" max="3" step="0.05"><small>Multiplies how many new ants every piece hatches once it is down a hole</small></div>
+    <div class="field"><label for="t-need">Ants needed <output id="o-need"></output></label><input type="range" id="t-need" min="0.5" max="2" step="0.1"><small>Multiplies how many ants it takes to lift each piece (one-ant snacks stay one)</small></div>
+    <div class="field"><label for="t-speed">Ant walk speed <output id="o-speed"></output></label><input type="range" id="t-speed" min="1" max="5" step="0.1"></div>
+    <div class="field"><label for="t-sense">Swarm sight range <output id="o-sense"></output></label><input type="range" id="t-sense" min="1.5" max="12" step="0.5"><small>How far a swarm looks for food and other swarms</small></div>
+    <div class="field"><label for="t-home">Wait before heading home <output id="o-home"></output></label><input type="range" id="t-home" min="0" max="10" step="0.5"><small>How long a swarm with nothing it can lift nearby waits before it walks to a hole and rejoins the ball</small></div>
+    <div class="field"><label for="t-start">Ants in the first ball <output id="o-start"></output></label><input type="range" id="t-start" min="1" max="20" step="1"></div>
+    <div class="field toggle"><label for="t-free">Free ant every 15 s <input type="checkbox" id="t-free"></label><small>The colony hatches one extra ant into the ball every 15 seconds, on top of what the food brings in.</small></div>
+    <div class="actions">
+      <button id="tuneApply" class="btn primary" type="button">Restart level</button>
+      <button id="tuneReset" class="btn" type="button">Defaults</button>
+    </div>
+    <section class="howto">
+      <h3>The loop</h3>
+      <ol>
+        <li>Tap the island to launch the glass ball. It shatters and the ants spill out.</li>
+        <li>Every piece of food takes a number of ants to lift; food that takes three or more shows the number over it, green when the next ball has enough.</li>
+        <li>A swarm only goes for food it has the ants for, and sends exactly that many; the rest look for more. Swarms with nothing to do merge when they meet.</li>
+        <li>Carriers haul their food to the nearest ant hole. Down it goes: the carriers come back into the cannon, with new ants hatched from what they brought.</li>
+        <li>Ants never die. A swarm with nothing it can lift nearby waits a moment, then walks to a hole and rejoins the ball.</li>
+        <li>With the free ant on, the colony also hatches one ant every 15 seconds; its rim fills toward the next one.</li>
+        <li>Carry off the objectives in red rings before the clock runs out. Each chip shows how many ants it takes, and turns green when the next ball has them.</li>
+        <li>In Sweet stacks every piece is a real object, carried off from the top down. A ball landing close shoves the stacks, and can topple one.</li>
+      </ol>
+    </section>
+  </aside>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as CANNON from 'cannon-es';
+
+// ================= tuning =================
+// the carry version keeps its own saved settings, apart from v1 and the original; the key changes
+// whenever the defaults are rebalanced, so sliders saved under an older balance do not hide the new one
+const DEFAULTS = { time: 180, carrySpeed: 0.8, giftScale: 1, needScale: 1, antSpeed: 2.4, startAnts: 1, sense: 3.2, homeWait: 2.5, freeAnt: false };
+const CFG = { ...DEFAULTS };
+try { Object.assign(CFG, JSON.parse(localStorage.getItem('swarm-siege-carry-cfg-1') || '{}')); } catch (e) { /* storage blocked */ }
+const saveCfg = () => { try { localStorage.setItem('swarm-siege-carry-cfg-1', JSON.stringify(CFG)); } catch (e) { /* ignore */ } };
+let levelIdx = 0;
+try { levelIdx = parseInt(localStorage.getItem('swarm-siege-carry-level') || '0', 10) || 0; } catch (e) { /* storage blocked */ }
+const saveLevel = () => { try { localStorage.setItem('swarm-siege-carry-level', String(levelIdx)); } catch (e) { /* ignore */ } };
+
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TAU = Math.PI * 2;
+const V3 = THREE.Vector3;
+const BALL_R = 1.0;
+// the glass ball and the cannon are drawn at 60%, and every piece of food 35% larger than it is built,
+// so the food reads on a phone and the cannon no longer fills the bottom of the screen
+const BALL_SCALE = 0.6;
+const FOOD_SCALE = 1.35;
+// where the next ball waits: in the cannon's mouth, set once the cannon is built
+const BALL_HOME = new V3(0, 2.6, 11.5);
+const ANT_SCALE = 1.8;    // ants are drawn larger than life so swarms read on a phone
+const BALL_ANT_SCALE = 0.75;
+const FIELD = { x0: -5.8, x1: 5.8, z0: -12.4, z1: 5.2 };
+const BALL_VISIBLE = 48;
+const MAX_ANTS = 4000;
+const DISPLAY = '"Lilita One", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif';
+const COL = { ink: '#1f2716', ink70: 'rgba(31,39,22,0.74)', cream: '#fff8e6', signal: '#e2462f', honey: '#f4b73a', leaf: '#47a547', olive: '#56662c' };
+
+const $ = (id) => document.getElementById(id);
+const gameEl = $('game');
+const glCanvas = $('gl');
+const fxCanvas = $('fx');
+const fx = fxCanvas.getContext('2d');
+
+// ================= renderer / scene =================
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+// after Ant Swarm: the level is an island on calm water, and there is nothing else in the world
+const SKY = 0x7fcbe8;
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 55, 120);
+
+const camera = new THREE.PerspectiveCamera(55, 0.46, 0.1, 200);
+// framed after Ant Swarm's opening view but steeper, so less hides behind tall stacks: 63 degrees down, the
+// island's front edge 70% of the way down the screen running past both sides, its far edge just below the
+// objective chips (so no objective hides behind the HUD), and the cannon at the bottom
+const CAM_POS = new V3(0, 30, 15);
+const CAM_LOOK = new V3(0, 0, 0);
+const VIEW_HALF_W = 7; // half the width seen at CAM_LOOK, in metres
+camera.position.copy(CAM_POS);
+camera.lookAt(CAM_LOOK);
+
+scene.add(new THREE.HemisphereLight(0xeef8ff, 0x7a6640, 1.35));
+const sun = new THREE.DirectionalLight(0xfff0d2, 2.4);
+sun.position.set(-7, 18, 9);
+sun.target.position.set(0, 0, -3);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 14, bottom: -14, near: 1, far: 60 });
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.025;
+scene.add(sun, sun.target);
+
+// ================= helpers =================
+const rand = Math.random;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpAngle = (a, b, t) => a + ((((b - a + Math.PI) % TAU) + TAU) % TAU - Math.PI) * t;
+const pick = (arr) => arr[(rand() * arr.length) | 0];
+function randomDisc(out) { const a = rand() * TAU, r = Math.sqrt(rand()); return out.set(Math.cos(a) * r, Math.sin(a) * r); }
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// ================= water, island and play surfaces =================
+// Calm, near-flat surfaces: no speckle, grain or tyre tracks, so the food is the only detail on screen.
+// The water is one flat unlit colour that matches the sky exactly, with a pale shore band round the island.
+const WATER_Y = -0.75;
+const water = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({ color: SKY, toneMapped: false }));
+water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; scene.add(water);
+// a rounded rectangle in the ground plane, w by d, centred at (0, cz)
+function roundedRectShape(w, d, r, cz) {
+  const s = new THREE.Shape(), x0 = -w / 2, x1 = w / 2, y0 = cz - d / 2, y1 = cz + d / 2;
+  s.moveTo(x0 + r, y0); s.lineTo(x1 - r, y0); s.quadraticCurveTo(x1, y0, x1, y0 + r); s.lineTo(x1, y1 - r); s.quadraticCurveTo(x1, y1, x1 - r, y1);
+  s.lineTo(x0 + r, y1); s.quadraticCurveTo(x0, y1, x0, y1 - r); s.lineTo(x0, y0 + r); s.quadraticCurveTo(x0, y0, x0 + r, y0);
+  return s;
+}
+// the island: a grass top over a thick band of orange soil, standing out of the water, with a pale shore round it
+const ISLAND = { w: 13.6, d: 19.6, cz: -3.6, r: 1.6 };
+(function island() {
+  const depth = 1.6, bevel = 0.14;
+  const geo = new THREE.ExtrudeGeometry(roundedRectShape(ISLAND.w - bevel * 2, ISLAND.d - bevel * 2, ISLAND.r, -ISLAND.cz), { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 10 });
+  geo.rotateX(-Math.PI / 2); geo.translate(0, -depth - bevel, 0);
+  const m = new THREE.Mesh(geo, [new THREE.MeshStandardMaterial({ color: 0x8fcf5a, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0xe9874a, roughness: 1 })]);
+  m.receiveShadow = true; scene.add(m);
+  const shore = new THREE.Mesh(new THREE.ShapeGeometry(roundedRectShape(ISLAND.w + 0.9, ISLAND.d + 0.9, ISLAND.r + 0.45, -ISLAND.cz), 16), new THREE.MeshBasicMaterial({ color: 0xc9eef8, toneMapped: false }));
+  shore.rotation.x = -Math.PI / 2; shore.position.y = WATER_Y + 0.01; scene.add(shore);
+})();
+// big soft gingham: two blues on cream, no speckle
+function ginghamTexture() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 768;
+  const g = c.getContext('2d'); const S = 64;
+  g.fillStyle = '#f7f2e6'; g.fillRect(0, 0, 512, 768);
+  g.fillStyle = 'rgba(46, 96, 176, 0.3)';
+  for (let x = 0; x < 512; x += S * 2) g.fillRect(x, 0, S, 768);
+  for (let y = 0; y < 768; y += S * 2) g.fillRect(0, y, 512, S);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+// a painted garden table, weathered to a pale blue-grey: a calm cool field, so the warm food stands off it.
+// Six long planks with a barely different tone each and a dark seam between them; no grain.
+function woodTexture() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 768;
+  const g = c.getContext('2d'); const r = mulberry32(23); const P = 512 / 6;
+  for (let i = 0; i < 6; i++) {
+    const tone = 0.97 + r() * 0.06;
+    g.fillStyle = `rgb(${Math.round(170 * tone)},${Math.round(188 * tone)},${Math.round(194 * tone)})`; g.fillRect(i * P, 0, P, 768);
+    g.fillStyle = 'rgba(38,52,62,0.4)'; g.fillRect(i * P - 1.5, 0, 3, 768);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+
+// ================= materials =================
+const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.82, metalness: 0, flatShading: true, ...extra });
+const MAT = {
+  khaki: mat(0xcdb27a), olive: mat(0x6f7f34), oliveDark: mat(0x4c5926), oliveLight: mat(0x8c9b4a),
+  wood: mat(0xc28a4f), woodDark: mat(0x8d5d2e), concrete: mat(0xc9c5b8), concreteDark: mat(0x9b978b),
+  red: mat(0xe2462f), white: mat(0xf4f1e8, { side: THREE.DoubleSide }), steel: mat(0x8e979c, { metalness: 0.3, roughness: 0.55 }),
+  steelDark: mat(0x4a4f52, { metalness: 0.2 }), tire: mat(0x2c2a27, { roughness: 0.95 }), glass: mat(0x34444d, { roughness: 0.25 }),
+  canvas: mat(0x7f8d4c), yellow: mat(0xf4b73a), blue: mat(0x4a7fb5),
+  // picnic
+  sugar: mat(0xfbfaf4), cherry: mat(0xc8203a, { roughness: 0.35 }), stem: mat(0x6b8f2a), cookie: mat(0xd09a55), chip: mat(0x4a2a18),
+  candyR: mat(0xe8483a, { roughness: 0.3 }), candyY: mat(0xf4c23a, { roughness: 0.3 }), candyG: mat(0x5cbf4a, { roughness: 0.3 }),
+  dough: mat(0xdca35e), icing: mat(0xf28ab0, { roughness: 0.5 }), mint: mat(0x9fe0c4, { roughness: 0.5 }), lemon: mat(0xf7dc6f, { roughness: 0.5 }),
+  frost: mat(0xf7b2c8, { roughness: 0.6 }), cream: mat(0xfff4e0, { roughness: 0.7 }), liner: mat(0x6fb7e8), sponge: mat(0xf3d29a),
+  choc: mat(0x7a4a2e, { roughness: 0.5 }), wrapper: mat(0x7b4fc0), foil: mat(0xe8c25a, { metalness: 0.4, roughness: 0.35 }),
+  cheese: mat(0xf6c445), cheeseDark: mat(0xd9a52a), bread: mat(0xeccb92), crust: mat(0xc0843f), lettuce: mat(0x6cbf3f), ham: mat(0xf2a7a0),
+  greenOlive: mat(0x7d9a2e), cup: mat(0xf8f4ec), sauce: mat(0xd8432e), mozz: mat(0xf8d36a), pepperoni: mat(0xb3322a), basil: mat(0x3f8f3a),
+  bun: mat(0xe0a050), sesame: mat(0xfff3d0), patty: mat(0x6b3a22), rind: mat(0x3f8f3a), rindDark: mat(0x2c6a2a), pith: mat(0xdcefc0),
+  flesh: mat(0xf05a5a), seed: mat(0x2a1a14), plate: mat(0xf2f6f8, { roughness: 0.4 }), candle: mat(0x6fb7e8), strawberry: mat(0xe03a3a),
+  leafGreen: mat(0x4f9a3a), flame: new THREE.MeshBasicMaterial({ color: 0xffc23a }),
+  // stacks
+  pancake: mat(0xdf9f52), pancakeTop: mat(0xf0c27a), pancakeEdge: mat(0xa8652c), butter: mat(0xfbe6a2, { roughness: 0.5 }),
+  syrup: mat(0xa9561a, { roughness: 0.18 }), pattyDark: mat(0x4e2a18), lettuceLight: mat(0x9ad65c), tomato: mat(0xf2715a, { roughness: 0.45 }),
+  chocDark: mat(0x5a321e, { roughness: 0.5 }), pearl: mat(0xfff8ee, { roughness: 0.3 }),
+};
+
+// ================= level objects =================
+function add(g, geo, m, x, y, z, rx = 0, ry = 0, rz = 0) {
+  const mesh = new THREE.Mesh(geo, m); mesh.position.set(x, y, z); mesh.rotation.set(rx, ry, rz);
+  mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh;
+}
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+const cyl = (rt, rb, h, s = 14, ...rest) => new THREE.CylinderGeometry(rt, rb, h, s, ...rest);
+function crateInto(g, x, y, z, s, ry) {
+  add(g, box(s, s, s), MAT.wood, x, y + s / 2, z, 0, ry, 0);
+  add(g, box(s * 1.03, s * 0.16, s * 1.03), MAT.woodDark, x, y + s / 2, z, 0, ry, 0);
+  add(g, box(s * 0.16, s * 1.03, s * 1.03), MAT.woodDark, x, y + s / 2, z, 0, ry, 0);
+}
+function barrelInto(g, x, z, m) {
+  add(g, cyl(0.2, 0.2, 0.52), m, x, 0.26, z);
+  add(g, cyl(0.21, 0.21, 0.045), MAT.steelDark, x, 0.15, z);
+  add(g, cyl(0.21, 0.21, 0.045), MAT.steelDark, x, 0.38, z);
+}
+
+// hx/hz: footprint half-size, h: the height ants stand at when on top, color: crumb colour.
+// Optional: round (elliptical footprint), tiers [[radius fraction, height], ...] for stepped round tops,
+// lift (extra height for the gate label), anim(t) for idle animation.
+const BUILD = {
+  sandbags() {
+    const g = new THREE.Group(); const geo = new THREE.SphereGeometry(0.2, 9, 6);
+    for (const [x, y, z, r] of [[-0.15, 0.1, 0, 0.15], [0.16, 0.1, 0.02, -0.1], [0, 0.27, 0, 0.05]]) add(g, geo, MAT.khaki, x, y, z, 0, r, 0).scale.set(1.3, 0.55, 0.8);
+    return { g, hx: 0.42, hz: 0.2, h: 0.36, color: '#cdb27a' };
+  },
+  barrel() {
+    const g = new THREE.Group(); const [m, c] = pick([[MAT.olive, '#6f7f34'], [MAT.red, '#e2462f'], [MAT.blue, '#4a7fb5']]);
+    barrelInto(g, 0, 0, m); return { g, hx: 0.21, hz: 0.21, h: 0.52, color: c };
+  },
+  crate() { const g = new THREE.Group(); crateInto(g, 0, 0, 0, 0.5, 0); return { g, hx: 0.26, hz: 0.26, h: 0.5, color: '#c28a4f' }; },
+  drums() {
+    const g = new THREE.Group(); for (const [x, z] of [[-0.21, 0.12], [0.21, 0.12], [0, -0.2]]) barrelInto(g, x, z, MAT.olive);
+    return { g, hx: 0.43, hz: 0.42, h: 0.52, color: '#6f7f34' };
+  },
+  crates() {
+    const g = new THREE.Group(); crateInto(g, -0.29, 0, 0, 0.55, 0); crateInto(g, 0.29, 0, 0.02, 0.55, 0.1); crateInto(g, 0, 0.55, 0, 0.55, -0.2);
+    return { g, hx: 0.58, hz: 0.3, h: 1.1, color: '#c28a4f' };
+  },
+  wall() {
+    const g = new THREE.Group();
+    add(g, box(2.0, 0.82, 0.34), MAT.concrete, 0, 0.41, 0);
+    add(g, box(2.08, 0.1, 0.42), MAT.concreteDark, 0, 0.87, 0);
+    for (const x of [-0.95, 0.95]) add(g, box(0.22, 0.96, 0.48), MAT.concreteDark, x, 0.48, 0);
+    add(g, box(1.6, 0.09, 0.35), MAT.yellow, 0, 0.18, 0.005);
+    return { g, hx: 1.06, hz: 0.25, h: 0.94, color: '#c9c5b8' };
+  },
+  tent() {
+    const g = new THREE.Group(); const r = 0.72;
+    const body = cyl(r, r, 1.6, 3); body.rotateX(-Math.PI / 2); body.translate(0, r / 2, 0); add(g, body, MAT.canvas, 0, 0, 0);
+    const door = cyl(0.3, 0.3, 0.04, 3); door.rotateX(-Math.PI / 2); door.translate(0, 0.15, 0); add(g, door, MAT.oliveDark, 0, 0, 0.8);
+    add(g, cyl(0.03, 0.03, 1.75, 6), MAT.woodDark, 0, r * 1.5, 0, Math.PI / 2, 0, 0);
+    return { g, hx: 0.64, hz: 0.82, h: 1.0, color: '#7f8d4c' };
+  },
+  jeep() {
+    const g = new THREE.Group();
+    add(g, box(0.95, 0.34, 1.5), MAT.olive, 0, 0.4, 0);
+    add(g, box(0.92, 0.16, 0.5), MAT.oliveLight, 0, 0.64, 0.48);
+    add(g, box(0.9, 0.34, 0.05), MAT.glass, 0, 0.8, 0.2, -0.25, 0, 0);
+    for (const x of [-0.42, 0.42]) add(g, box(0.06, 0.42, 0.06), MAT.steelDark, x, 0.78, -0.45);
+    add(g, box(0.9, 0.06, 0.06), MAT.steelDark, 0, 0.98, -0.45);
+    const w = cyl(0.2, 0.2, 0.16, 12);
+    for (const x of [-0.5, 0.5]) for (const z of [-0.48, 0.5]) add(g, w, MAT.tire, x, 0.2, z, 0, 0, Math.PI / 2);
+    add(g, cyl(0.18, 0.18, 0.12, 12), MAT.tire, 0, 0.48, -0.8, Math.PI / 2, 0, 0);
+    return { g, hx: 0.6, hz: 0.84, h: 0.8, color: '#6f7f34' };
+  },
+  tower() {
+    const g = new THREE.Group();
+    for (const x of [-0.45, 0.45]) for (const z of [-0.45, 0.45]) add(g, box(0.1, 2.0, 0.1), MAT.woodDark, x, 1.0, z);
+    for (const z of [-0.45, 0.45]) add(g, box(1.25, 0.06, 0.06), MAT.woodDark, 0, 1.0, z, 0, 0, 0.95);
+    for (const x of [-0.45, 0.45]) add(g, box(0.06, 0.06, 1.25), MAT.woodDark, x, 1.0, 0, 0.95, 0, 0);
+    add(g, box(1.25, 0.12, 1.25), MAT.wood, 0, 2.0, 0);
+    for (const z of [-0.6, 0.6]) add(g, box(1.25, 0.34, 0.06), MAT.wood, 0, 2.22, z);
+    for (const x of [-0.6, 0.6]) add(g, box(0.06, 0.34, 1.25), MAT.wood, x, 2.22, 0);
+    for (const x of [-0.58, 0.58]) for (const z of [-0.58, 0.58]) add(g, box(0.06, 0.6, 0.06), MAT.woodDark, x, 2.5, z);
+    add(g, new THREE.ConeGeometry(0.98, 0.5, 4), MAT.olive, 0, 3.02, 0, 0, Math.PI / 4, 0);
+    return { g, hx: 0.64, hz: 0.64, h: 2.1, color: '#c28a4f', lift: 1.0 };
+  },
+  truck() {
+    const g = new THREE.Group();
+    add(g, box(1.0, 0.2, 2.5), MAT.steelDark, 0, 0.42, 0);
+    add(g, box(1.1, 0.72, 0.8), MAT.olive, 0, 0.88, 0.82);
+    add(g, box(0.96, 0.3, 0.04), MAT.glass, 0, 1.02, 1.23);
+    add(g, box(1.15, 0.18, 1.6), MAT.oliveDark, 0, 0.6, -0.35);
+    const cover = new THREE.CylinderGeometry(0.58, 0.58, 1.6, 10, 1, false, -Math.PI / 2, Math.PI); cover.rotateX(-Math.PI / 2);
+    add(g, cover, MAT.canvas, 0, 0.69, -0.35);
+    const w = cyl(0.24, 0.24, 0.18, 12);
+    for (const x of [-0.56, 0.56]) for (const z of [0.85, -0.3, -0.95]) add(g, w, MAT.tire, x, 0.24, z, 0, 0, Math.PI / 2);
+    return { g, hx: 0.62, hz: 1.3, h: 1.2, color: '#6f7f34' };
+  },
+  radar() {
+    const g = new THREE.Group();
+    add(g, box(1.0, 0.45, 1.0), MAT.concrete, 0, 0.225, 0);
+    add(g, box(1.03, 0.1, 1.03), MAT.red, 0, 0.42, 0);
+    add(g, cyl(0.08, 0.11, 1.1, 10), MAT.steel, 0, 1.0, 0);
+    const dish = new THREE.Group(); dish.position.set(0, 1.5, 0); dish.rotation.x = 0.7; g.add(dish);
+    add(dish, new THREE.SphereGeometry(0.72, 20, 8, 0, TAU, Math.PI * 0.68, Math.PI * 0.32), MAT.white, 0, 0.72, 0);
+    add(dish, new THREE.TorusGeometry(0.61, 0.045, 6, 28), MAT.red, 0, 0.335, 0, Math.PI / 2, 0, 0);
+    add(dish, cyl(0.025, 0.025, 0.5, 6), MAT.steel, 0, 0.3, 0);
+    add(dish, new THREE.SphereGeometry(0.07, 8, 6), MAT.red, 0, 0.56, 0);
+    return { g, hx: 0.56, hz: 0.56, h: 0.47, color: '#e2462f', spin: dish, lift: 1.6 };
+  },
+  tank() {
+    const g = new THREE.Group();
+    for (const x of [-0.7, 0.7]) add(g, box(0.34, 0.44, 2.1), MAT.tire, x, 0.22, 0);
+    add(g, box(1.12, 0.42, 1.9), MAT.oliveDark, 0, 0.5, 0);
+    add(g, box(1.42, 0.06, 2.0), MAT.olive, 0, 0.72, 0);
+    const turret = new THREE.Group(); turret.position.set(0, 0.75, -0.15); g.add(turret);
+    add(turret, cyl(0.46, 0.54, 0.36, 8), MAT.olive, 0, 0.18, 0);
+    add(turret, cyl(0.16, 0.16, 0.08, 8), MAT.oliveDark, 0.15, 0.39, -0.1);
+    add(turret, cyl(0.075, 0.075, 1.3, 10), MAT.oliveDark, 0, 0.2, 0.9, Math.PI / 2, 0, 0);
+    add(turret, cyl(0.1, 0.1, 0.16, 10), MAT.steelDark, 0, 0.2, 1.53, Math.PI / 2, 0, 0);
+    add(turret, box(0.03, 0.16, 0.16), MAT.red, 0.5, 0.2, 0);
+    add(turret, box(0.03, 0.16, 0.16), MAT.red, -0.5, 0.2, 0);
+    return { g, hx: 0.88, hz: 1.06, h: 0.76, color: '#4c5926', spin: turret };
+  },
+  hq() {
+    const g = new THREE.Group();
+    add(g, box(3.0, 1.3, 2.1), MAT.concrete, 0, 0.65, 0);
+    add(g, box(3.04, 0.14, 2.14), MAT.red, 0, 1.05, 0);
+    add(g, box(3.2, 0.14, 2.3), MAT.concreteDark, 0, 1.37, 0);
+    add(g, box(0.56, 0.8, 0.06), MAT.woodDark, 0, 0.4, 1.06);
+    for (const x of [-0.95, 0.95]) add(g, box(0.5, 0.32, 0.06), MAT.glass, x, 0.72, 1.06);
+    add(g, box(0.6, 0.3, 0.5), MAT.steel, -0.9, 1.59, -0.3);
+    add(g, cyl(0.03, 0.03, 1.5, 6), MAT.steel, 1.25, 2.19, -0.7);
+    const flag = add(g, box(0.62, 0.38, 0.02), MAT.red, 1.57, 2.72, -0.7);
+    return { g, hx: 1.6, hz: 1.15, h: 1.44, color: '#c9c5b8', flag };
+  },
+
+  // ---------- picnic ----------
+  sugar() {
+    const g = new THREE.Group(); add(g, box(0.38, 0.38, 0.38), MAT.sugar, 0, 0.19, 0);
+    return { g, hx: 0.2, hz: 0.2, h: 0.38, color: '#fbfaf4' };
+  },
+  cherry() {
+    const g = new THREE.Group(); const geo = new THREE.SphereGeometry(0.17, 12, 9);
+    add(g, geo, MAT.cherry, -0.14, 0.17, 0.02); add(g, geo, MAT.cherry, 0.14, 0.17, -0.02);
+    for (const s of [-1, 1]) add(g, cyl(0.018, 0.018, 0.3, 5), MAT.stem, s * 0.07, 0.46, 0, 0, 0, s * 0.53);
+    return { g, hx: 0.32, hz: 0.19, h: 0.34, color: '#c8203a' };
+  },
+  cookie() {
+    const g = new THREE.Group();
+    add(g, cyl(0.3, 0.31, 0.09, 14), MAT.cookie, 0, 0.045, 0);
+    add(g, cyl(0.28, 0.29, 0.09, 14), MAT.cookie, 0.04, 0.135, -0.03, 0.05, 0, 0.04);
+    const chip = new THREE.SphereGeometry(0.04, 6, 4);
+    for (const [x, z] of [[-0.1, 0.08], [0.12, 0.1], [0.02, -0.14], [0.16, -0.08], [-0.12, -0.08]]) add(g, chip, MAT.chip, x + 0.04, 0.185, z - 0.03).scale.set(1, 0.55, 1);
+    return { g, hx: 0.31, hz: 0.31, h: 0.19, color: '#d09a55', round: true };
+  },
+  candy() {
+    const g = new THREE.Group(); const [m, c] = pick([[MAT.candyR, '#e8483a'], [MAT.candyY, '#f4c23a'], [MAT.candyG, '#5cbf4a']]);
+    add(g, new THREE.SphereGeometry(0.16, 12, 9), m, 0, 0.15, 0).scale.set(1.35, 0.9, 1);
+    const tw = new THREE.ConeGeometry(0.12, 0.2, 8);
+    for (const s of [-1, 1]) add(g, tw, m, s * 0.3, 0.15, 0, 0, 0, s * Math.PI / 2);
+    return { g, hx: 0.4, hz: 0.17, h: 0.29, color: c };
+  },
+  donut() {
+    const g = new THREE.Group(); const [m, c] = pick([[MAT.icing, '#f28ab0'], [MAT.mint, '#9fe0c4'], [MAT.lemon, '#f7dc6f']]);
+    add(g, new THREE.TorusGeometry(0.3, 0.16, 10, 22), MAT.dough, 0, 0.16, 0, Math.PI / 2, 0, 0);
+    add(g, new THREE.TorusGeometry(0.3, 0.168, 10, 22), m, 0, 0.225, 0, Math.PI / 2, 0, 0).scale.set(1, 1, 0.62);
+    const sp = box(0.09, 0.025, 0.025); const SPR = [MAT.yellow, MAT.blue, MAT.cream, MAT.lettuce, MAT.candyR];
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * TAU + rand() * 0.3, r = 0.3 + (rand() - 0.5) * 0.14;
+      add(g, sp, SPR[i % SPR.length], Math.cos(a) * r, 0.33, Math.sin(a) * r, 0, rand() * 3, 0);
+    }
+    return { g, hx: 0.47, hz: 0.47, h: 0.32, color: c, round: true };
+  },
+  cupcake() {
+    const g = new THREE.Group(); const [m, c] = pick([[MAT.frost, '#f7b2c8'], [MAT.mint, '#9fe0c4'], [MAT.lemon, '#f7dc6f']]);
+    add(g, cyl(0.4, 0.3, 0.44, 12), MAT.liner, 0, 0.22, 0);
+    add(g, cyl(0.39, 0.39, 0.08, 14), MAT.sponge, 0, 0.47, 0);
+    add(g, new THREE.TorusGeometry(0.27, 0.14, 8, 18), m, 0, 0.55, 0, Math.PI / 2, 0, 0);
+    add(g, cyl(0.28, 0.28, 0.24, 12), m, 0, 0.6, 0);
+    add(g, new THREE.TorusGeometry(0.16, 0.1, 8, 14), m, 0, 0.72, 0, Math.PI / 2, 0, 0);
+    add(g, new THREE.ConeGeometry(0.13, 0.26, 10), m, 0, 0.86, 0);
+    add(g, new THREE.SphereGeometry(0.08, 10, 8), MAT.cherry, 0, 1.02, 0);
+    return { g, hx: 0.42, hz: 0.42, h: 0.82, color: c, round: true, tiers: [[1, 0.62], [0.6, 0.86]] };
+  },
+  chocbar() {
+    const g = new THREE.Group();
+    add(g, box(1.9, 0.14, 0.8), MAT.choc, 0, 0.07, 0);
+    for (const x of [-0.8, -0.48]) for (const z of [-0.2, 0.2]) add(g, box(0.27, 0.07, 0.34), MAT.choc, x, 0.175, z);
+    add(g, box(1.28, 0.3, 0.86), MAT.wrapper, 0.33, 0.15, 0);
+    add(g, box(0.07, 0.31, 0.88), MAT.foil, -0.33, 0.155, 0);
+    add(g, box(0.5, 0.305, 0.5), MAT.cream, 0.4, 0.1525, 0);
+    return { g, hx: 0.97, hz: 0.44, h: 0.3, color: '#7a4a2e' };
+  },
+  cheese() {
+    const g = new THREE.Group();
+    add(g, box(1.2, 0.6, 0.9), MAT.cheese, 0, 0.3, 0);
+    const hole = (r) => cyl(r, r, 0.02, 10);
+    for (const [x, z, r] of [[-0.3, -0.15, 0.12], [0.25, 0.18, 0.09], [0.35, -0.22, 0.06], [-0.05, 0.25, 0.05], [-0.42, 0.22, 0.07]]) add(g, hole(r), MAT.cheeseDark, x, 0.605, z);
+    for (const [x, y, r] of [[-0.35, 0.3, 0.09], [0.15, 0.4, 0.07], [0.38, 0.18, 0.1]]) add(g, hole(r), MAT.cheeseDark, x, y, 0.455, Math.PI / 2, 0, 0);
+    for (const [z, y, r] of [[-0.2, 0.35, 0.08], [0.2, 0.2, 0.06]]) add(g, hole(r), MAT.cheeseDark, 0.605, y, z, 0, 0, Math.PI / 2);
+    return { g, hx: 0.6, hz: 0.45, h: 0.6, color: '#f6c445' };
+  },
+  sandwich() {
+    const g = new THREE.Group();
+    const slice = (y) => { add(g, box(1.1, 0.14, 1.1), MAT.crust, 0, y, 0); add(g, box(0.96, 0.146, 0.96), MAT.bread, 0, y, 0); };
+    slice(0.07);
+    add(g, box(1.12, 0.05, 1.12), MAT.lettuce, 0, 0.165, 0, 0, 0.16, 0);
+    add(g, box(1.04, 0.08, 1.04), MAT.ham, 0, 0.23, 0, 0, -0.1, 0);
+    add(g, box(1.08, 0.04, 1.08), MAT.cheese, 0, 0.29, 0, 0, 0.42, 0);
+    slice(0.38);
+    add(g, cyl(0.02, 0.02, 0.5, 5), MAT.cream, 0.1, 0.62, -0.05);
+    add(g, new THREE.SphereGeometry(0.09, 10, 8), MAT.greenOlive, 0.1, 0.78, -0.05);
+    return { g, hx: 0.6, hz: 0.6, h: 0.45, color: '#eccb92' };
+  },
+  shake() {
+    const g = new THREE.Group();
+    add(g, cyl(0.44, 0.33, 1.3, 16), MAT.cup, 0, 0.65, 0);
+    const rAt = (y) => 0.33 + 0.11 * y / 1.3 + 0.012;
+    for (const y of [0.32, 0.78]) add(g, cyl(rAt(y + 0.08), rAt(y - 0.08), 0.16, 16), MAT.frost, 0, y, 0);
+    add(g, cyl(0.31, 0.31, 0.14, 12), MAT.cream, 0, 1.36, 0);
+    add(g, new THREE.TorusGeometry(0.3, 0.13, 8, 16), MAT.cream, 0, 1.38, 0, Math.PI / 2, 0, 0);
+    add(g, new THREE.TorusGeometry(0.18, 0.1, 8, 14), MAT.cream, 0, 1.52, 0, Math.PI / 2, 0, 0);
+    add(g, new THREE.ConeGeometry(0.14, 0.26, 10), MAT.cream, 0, 1.66, 0);
+    add(g, new THREE.SphereGeometry(0.09, 10, 8), MAT.cherry, 0, 1.84, 0);
+    add(g, cyl(0.04, 0.04, 1.0, 8), MAT.blue, 0.2, 1.7, -0.08, 0.2, 0, -0.35);
+    return { g, hx: 0.45, hz: 0.45, h: 1.45, color: '#f7b2c8', round: true, lift: 0.5 };
+  },
+  pizza() {
+    const g = new THREE.Group(); const arc = TAU * 5 / 6, st = 0.4; // one slice already gone
+    const sector = (r0, r1, h, s = st, a = arc) => new THREE.CylinderGeometry(r0, r1, h, 30, 1, false, s, a);
+    add(g, sector(1.05, 1.08, 0.1), MAT.dough, 0, 0.05, 0);
+    const rim = new THREE.TorusGeometry(1.0, 0.085, 6, 30, arc); rim.rotateX(Math.PI / 2); rim.rotateY(st + arc - Math.PI / 2);
+    add(g, rim, MAT.dough, 0, 0.11, 0);
+    add(g, sector(0.95, 0.95, 0.03), MAT.sauce, 0, 0.115, 0);
+    add(g, sector(0.9, 0.9, 0.03, st + 0.04, arc - 0.08), MAT.mozz, 0, 0.135, 0);
+    const pep = cyl(0.14, 0.14, 0.035, 12); const r = mulberry32(9);
+    for (let i = 0; i < 9; i++) {
+      const a = st + 0.25 + (i + r() * 0.6) / 9 * (arc - 0.5), d = 0.3 + r() * 0.45;
+      add(g, pep, MAT.pepperoni, Math.sin(a) * d, 0.16, Math.cos(a) * d);
+    }
+    const leaf = new THREE.SphereGeometry(0.07, 6, 4);
+    for (let i = 0; i < 5; i++) {
+      const a = st + 0.5 + i / 5 * (arc - 0.8), d = 0.55 + (i % 2) * 0.2;
+      add(g, leaf, MAT.basil, Math.sin(a) * d, 0.165, Math.cos(a) * d, 0, a, 0).scale.set(0.7, 0.25, 1.3);
+    }
+    return { g, hx: 1.08, hz: 1.08, h: 0.17, color: '#e0a050', round: true };
+  },
+  burger() {
+    const g = new THREE.Group();
+    add(g, cyl(0.6, 0.55, 0.2, 20), MAT.bun, 0, 0.1, 0);
+    add(g, cyl(0.67, 0.65, 0.17, 20), MAT.patty, 0, 0.285, 0);
+    add(g, box(1.02, 0.035, 1.02), MAT.cheese, 0, 0.385, 0, 0, Math.PI / 4 + 0.15, 0);
+    add(g, cyl(0.75, 0.72, 0.05, 11), MAT.lettuce, 0, 0.43, 0);
+    for (const [x, z] of [[-0.22, 0.14], [0.24, 0.1], [0, -0.26]]) add(g, cyl(0.29, 0.29, 0.06, 14), MAT.red, x, 0.475, z);
+    add(g, new THREE.SphereGeometry(0.66, 24, 10, 0, TAU, 0, Math.PI / 2), MAT.bun, 0, 0.5, 0).scale.set(1, 0.64, 1);
+    const seed = new THREE.SphereGeometry(0.035, 6, 4);
+    for (let i = 0; i < 14; i++) {
+      const th = i * 2.4, ph = 0.2 + 0.95 * Math.sqrt((i + 0.5) / 14);
+      add(g, seed, MAT.sesame, Math.sin(ph) * Math.cos(th) * 0.66, 0.5 + Math.cos(ph) * 0.66 * 0.64, Math.sin(ph) * Math.sin(th) * 0.66, 0, th, 0).scale.set(1, 0.5, 1.8);
+    }
+    return { g, hx: 0.7, hz: 0.7, h: 0.92, color: '#e0a050', round: true, tiers: [[1, 0.48], [0.85, 0.72], [0.55, 0.9]] };
+  },
+  melon() {
+    const g = new THREE.Group(); const S = [1.0, 0.72, 0.86];
+    add(g, new THREE.SphereGeometry(1, 26, 10, 0, TAU, Math.PI / 2, Math.PI / 2), MAT.rind, 0, 0.72, 0).scale.set(...S);
+    for (let i = 0; i < 11; i++) add(g, new THREE.SphereGeometry(1.012, 3, 10, i / 11 * TAU, 0.2, Math.PI / 2, Math.PI / 2), MAT.rindDark, 0, 0.72, 0).scale.set(...S);
+    add(g, cyl(1, 1, 0.05, 36), MAT.pith, 0, 0.725, 0).scale.set(1, 1, 0.86);
+    add(g, cyl(0.9, 0.9, 0.05, 36), MAT.flesh, 0, 0.75, 0).scale.set(1, 1, 0.86);
+    const seed = new THREE.SphereGeometry(0.05, 6, 4);
+    for (const [n, d] of [[10, 0.6], [6, 0.33]]) for (let i = 0; i < n; i++) {
+      const a = i / n * TAU + d;
+      add(g, seed, MAT.seed, Math.sin(a) * d, 0.78, Math.cos(a) * d * 0.86, 0, a, 0).scale.set(0.6, 0.35, 1.1);
+    }
+    return { g, hx: 1.0, hz: 0.86, h: 0.78, color: '#f05a5a', round: true };
+  },
+  cake() {
+    const g = new THREE.Group();
+    add(g, cyl(1.62, 1.55, 0.07, 36), MAT.plate, 0, 0.035, 0);
+    add(g, cyl(1.32, 1.32, 0.74, 32), MAT.cream, 0, 0.44, 0);
+    add(g, cyl(1.35, 1.35, 0.1, 32), MAT.frost, 0, 0.82, 0);
+    const drip = new THREE.SphereGeometry(0.07, 6, 4);
+    for (let i = 0; i < 18; i++) {
+      const a = i / 18 * TAU + 0.1, len = 0.14 + ((i * 7) % 5) * 0.04, x = Math.sin(a) * 1.33, z = Math.cos(a) * 1.33;
+      add(g, cyl(0.07, 0.07, len, 6), MAT.frost, x, 0.82 - len / 2, z); add(g, drip, MAT.frost, x, 0.82 - len, z);
+    }
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * TAU, x = Math.sin(a) * 1.12, z = Math.cos(a) * 1.12;
+      add(g, new THREE.ConeGeometry(0.12, 0.24, 8), MAT.strawberry, x, 1.0, z, Math.PI, 0, 0);
+      add(g, new THREE.ConeGeometry(0.1, 0.06, 5), MAT.leafGreen, x, 1.13, z);
+    }
+    add(g, cyl(0.86, 0.86, 0.58, 28), MAT.cream, 0, 1.16, 0);
+    add(g, cyl(0.89, 0.89, 0.09, 28), MAT.frost, 0, 1.46, 0);
+    const flames = [];
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * TAU, x = Math.sin(a) * 0.5, z = Math.cos(a) * 0.5;
+      add(g, cyl(0.045, 0.045, 0.36, 6), i % 2 ? MAT.candle : MAT.yellow, x, 1.68, z);
+      const f = add(g, new THREE.SphereGeometry(0.07, 8, 6), MAT.flame, x, 1.92, z); f.castShadow = false; flames.push(f);
+    }
+    return {
+      g, hx: 1.62, hz: 1.62, h: 1.5, color: '#f7b2c8', round: true, tiers: [[1, 0.07], [0.83, 0.87], [0.55, 1.5]], lift: 0.6,
+      anim: (t) => flames.forEach((f, i) => f.scale.set(0.8, 1.5 + Math.sin(t * 14 + i * 2) * 0.3, 0.8)),
+    };
+  },
+
+  // ---------- stacked pieces: each one a rigid body resting on the one below ----------
+  // ext: the collider's half sizes when they differ from hx, h / 2, hz (round food stands on a slightly smaller box)
+  pancake() {
+    const g = new THREE.Group();
+    add(g, cyl(0.86, 0.84, 0.2, 22), MAT.pancake, 0, 0.1, 0);
+    add(g, cyl(0.8, 0.8, 0.012, 22), MAT.pancakeTop, 0, 0.202, 0);
+    add(g, cyl(0.83, 0.86, 0.035, 22), MAT.pancakeEdge, 0, 0.018, 0);
+    return { g, hx: 0.86, hz: 0.86, h: 0.2, color: '#df9f52', round: true, ext: [0.74, 0.1, 0.74] };
+  },
+  pancakeTop() {
+    const b = BUILD.pancake(), g = b.g;
+    add(g, cyl(0.62, 0.66, 0.03, 20), MAT.syrup, 0, 0.215, 0);
+    for (const a of [0.3, 1.6, 2.6, 3.9, 5.1]) {
+      const x = Math.sin(a) * 0.85, z = Math.cos(a) * 0.85;
+      add(g, cyl(0.06, 0.05, 0.16, 6), MAT.syrup, x, 0.13, z); add(g, new THREE.SphereGeometry(0.06, 6, 4), MAT.syrup, x, 0.05, z);
+    }
+    add(g, box(0.36, 0.16, 0.3), MAT.butter, 0.05, 0.31, -0.02, 0, 0.4, 0);
+    return b;
+  },
+  bunBottom() {
+    const g = new THREE.Group();
+    add(g, cyl(0.95, 0.86, 0.3, 22), MAT.bun, 0, 0.15, 0);
+    add(g, cyl(0.9, 0.9, 0.02, 22), MAT.bread, 0, 0.305, 0);
+    return { g, hx: 0.95, hz: 0.95, h: 0.31, color: '#e0a050', round: true, ext: [0.8, 0.155, 0.8] };
+  },
+  pattyLayer() {
+    const g = new THREE.Group();
+    add(g, cyl(1.02, 1.0, 0.26, 18), MAT.patty, 0, 0.13, 0);
+    const bump = new THREE.SphereGeometry(0.16, 6, 4);
+    for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.2 + (i % 3) * 0.27; add(g, bump, MAT.pattyDark, Math.cos(a) * r, 0.26, Math.sin(a) * r).scale.set(1, 0.25, 1); }
+    return { g, hx: 1.02, hz: 1.02, h: 0.26, color: '#6b3a22', round: true, ext: [0.86, 0.13, 0.86] };
+  },
+  cheeseSlab() {
+    const g = new THREE.Group();
+    add(g, box(1.62, 0.1, 1.62), MAT.cheese, 0, 0.05, 0);
+    // the corners melt down over the patty
+    for (const [x, z] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) add(g, new THREE.ConeGeometry(0.13, 0.3, 6), MAT.cheese, x * 0.72, -0.07, z * 0.72, Math.PI, 0, 0);
+    return { g, hx: 0.81, hz: 0.81, h: 0.1, color: '#f6c445', ext: [0.8, 0.05, 0.8] };
+  },
+  lettuceLeaf() {
+    const g = new THREE.Group();
+    add(g, cyl(1.14, 1.06, 0.1, 11), MAT.lettuce, 0, 0.05, 0, 0, 0.2, 0);
+    add(g, cyl(0.98, 0.98, 0.104, 9), MAT.lettuceLight, 0, 0.052, 0, 0, 0.5, 0);
+    return { g, hx: 1.12, hz: 1.12, h: 0.1, color: '#6cbf3f', round: true, ext: [0.84, 0.05, 0.84] };
+  },
+  tomatoSlab() {
+    const g = new THREE.Group();
+    for (const [x, z] of [[-0.42, 0.25], [0.42, 0.25], [0, -0.45]]) {
+      add(g, cyl(0.44, 0.44, 0.12, 16), MAT.red, x, 0.06, z);
+      add(g, cyl(0.36, 0.36, 0.124, 14), MAT.tomato, x, 0.06, z);
+    }
+    return { g, hx: 0.86, hz: 0.89, h: 0.12, color: '#e2462f', ext: [0.78, 0.06, 0.78] };
+  },
+  bunTop() {
+    const g = new THREE.Group();
+    add(g, new THREE.SphereGeometry(0.98, 24, 10, 0, TAU, 0, Math.PI / 2), MAT.bun, 0, 0.02, 0).scale.set(1, 0.6, 1);
+    add(g, cyl(0.98, 0.98, 0.04, 24), MAT.bread, 0, 0.02, 0);
+    const seed = new THREE.SphereGeometry(0.045, 6, 4);
+    for (let i = 0; i < 18; i++) {
+      const th = i * 2.4, ph = 0.2 + 0.95 * Math.sqrt((i + 0.5) / 18);
+      add(g, seed, MAT.sesame, Math.sin(ph) * Math.cos(th) * 0.98, 0.02 + Math.cos(ph) * 0.98 * 0.6, Math.sin(ph) * Math.sin(th) * 0.98, 0, th, 0).scale.set(1, 0.5, 1.8);
+    }
+    return { g, hx: 0.98, hz: 0.98, h: 0.6, color: '#e0a050', round: true, ext: [0.78, 0.3, 0.78] };
+  },
+  // a layer cake in three loose tiers; the sponge shows wherever the ants bite through the buttercream
+  tierBig() { return cakeTier(1.45, 0.72, MAT.frost, (g) => {
+    for (let i = 0; i < 12; i++) { const a = i / 12 * TAU, x = Math.sin(a) * 1.22, z = Math.cos(a) * 1.22; add(g, new THREE.ConeGeometry(0.12, 0.24, 8), MAT.strawberry, x, 0.84, z, Math.PI, 0, 0); add(g, new THREE.ConeGeometry(0.1, 0.06, 5), MAT.leafGreen, x, 0.97, z); }
+  }); },
+  tierMid() { return cakeTier(1.02, 0.6, MAT.mint, (g) => {
+    const pearl = new THREE.SphereGeometry(0.07, 8, 6);
+    for (let i = 0; i < 16; i++) { const a = i / 16 * TAU; add(g, pearl, MAT.pearl, Math.sin(a) * 0.96, 0.66, Math.cos(a) * 0.96); }
+  }); },
+  tierTop() {
+    const flames = [];
+    const b = cakeTier(0.66, 0.5, MAT.lemon, (g) => {
+      for (let i = 0; i < 5; i++) {
+        const a = i / 5 * TAU, x = Math.sin(a) * 0.36, z = Math.cos(a) * 0.36;
+        add(g, cyl(0.045, 0.045, 0.36, 6), i % 2 ? MAT.candle : MAT.yellow, x, 0.68, z);
+        const f = add(g, new THREE.SphereGeometry(0.07, 8, 6), MAT.flame, x, 0.92, z); f.castShadow = false; flames.push(f);
+      }
+    });
+    b.anim = (t) => flames.forEach((f, i) => f.scale.set(0.8, 1.5 + Math.sin(t * 14 + i * 2) * 0.3, 0.8));
+    return b;
+  },
+  chocBlock() {
+    const g = new THREE.Group();
+    add(g, box(1.8, 0.16, 0.56), MAT.chocDark, 0, 0.08, 0);
+    for (const x of [-0.6, 0, 0.6]) add(g, box(0.54, 0.16, 0.5), MAT.choc, x, 0.24, 0);
+    return { g, hx: 0.9, hz: 0.28, h: 0.32, color: '#7a4a2e' };
+  },
+};
+function cakeTier(r, h, cap, dress) {
+  const g = new THREE.Group();
+  add(g, cyl(r, r, h, 30), MAT.cream, 0, h / 2, 0);
+  add(g, cyl(r + 0.03, r + 0.03, 0.1, 30), cap, 0, h - 0.05, 0);
+  const n = Math.round(r * 12), drip = new THREE.SphereGeometry(0.065, 6, 4);
+  for (let i = 0; i < n; i++) {
+    const a = i / n * TAU + 0.1, len = 0.12 + ((i * 7) % 5) * 0.035, x = Math.sin(a) * (r + 0.01), z = Math.cos(a) * (r + 0.01);
+    add(g, cyl(0.065, 0.065, len, 6), cap, x, h - len / 2, z); add(g, drip, cap, x, h - len, z);
+  }
+  dress(g);
+  return { g, hx: r, hz: r, h, color: '#f0cf94', round: true, ext: [r * 0.84, h / 2, r * 0.84] };
+}
+// need: ants it takes to lift; gift: new ants it hatches once it is down a hole (its carriers come back too).
+// A snack doubles the ant that carries it; bigger food gives a little less per carrier, but far more at once.
+// Tuned with the 0.8 m/s carry for a two to two-and-a-half minute clear on every level.
+const KINDS = {
+  sandbags: { need: 1, gift: 1 }, barrel: { need: 1, gift: 1 }, crate: { need: 1, gift: 1 },
+  drums: { need: 2, gift: 2 }, crates: { need: 3, gift: 3 }, wall: { need: 4, gift: 4 }, tent: { need: 6, gift: 5 },
+  jeep: { need: 8, gift: 6 }, tower: { need: 10, gift: 8 }, truck: { need: 12, gift: 9 },
+  // objectives take a big ball at once; the base's are biggest, since its two holes make every haul short
+  radar: { need: 18, gift: 6, objective: 'Radar' }, tank: { need: 36, gift: 10, objective: 'Tank' }, hq: { need: 60, gift: 12, objective: 'HQ' },
+  sugar: { need: 1, gift: 1 }, cherry: { need: 1, gift: 1 }, cookie: { need: 1, gift: 1 }, candy: { need: 1, gift: 1 },
+  donut: { need: 2, gift: 2 }, cupcake: { need: 3, gift: 3 }, chocbar: { need: 4, gift: 4 }, cheese: { need: 5, gift: 4 },
+  sandwich: { need: 6, gift: 5 }, shake: { need: 8, gift: 6 }, pizza: { need: 10, gift: 8 },
+  burger: { need: 15, gift: 6, objective: 'Burger' }, melon: { need: 30, gift: 10, objective: 'Melon' }, cake: { need: 50, gift: 12, objective: 'Cake' },
+  // stacked pieces; a whole stack can be one objective (the level names it), carried off a piece at a time from the top
+  pancake: { need: 3, gift: 2 }, pancakeTop: { need: 3, gift: 2 },
+  bunBottom: { need: 4, gift: 3 }, pattyLayer: { need: 4, gift: 3 }, cheeseSlab: { need: 2, gift: 1 },
+  lettuceLeaf: { need: 2, gift: 1 }, tomatoSlab: { need: 2, gift: 1 }, bunTop: { need: 5, gift: 3 },
+  tierBig: { need: 30, gift: 6 }, tierMid: { need: 20, gift: 4 }, tierTop: { need: 12, gift: 3 },
+  chocBlock: { need: 2, gift: 1 },
+};
+
+// ================= levels =================
+// layout rows: [kind, x, z, quarter turns]; scatter rows: [count, zFrom, zTo] of small food; holes: [x, z] of each ant hole
+const LEVELS = [
+  {
+    world: 'base', name: 'Army base', hint: 'Tap the base to launch your ant', win: 'Base cleared', seed: 1234,
+    // the ant holes sit along the front of the island, nearest the cannon
+    holes: [[-2.2, 2.8], [2.2, 2.8]],
+    smalls: ['sandbags', 'barrel', 'crate'], scatter: [[9, 1.0, 4.8], [7, -6.6, -0.6], [6, -12.2, -6.6]],
+    // spaced for food at 1.35x: nothing closer than 0.2 m, a three-wall front fence with two gateways
+    layout: [
+      ['hq', 0, -10.4], ['tank', 4.45, -6.0], ['radar', -3.9, -4.5],
+      ['wall', -4.3, 0.4], ['wall', 0, 0.4], ['wall', 4.3, 0.4],
+      ['wall', -1.6, -7.5], ['wall', 1.6, -7.5], ['wall', -3.05, -9.6, 1], ['wall', 3.05, -9.6, 1],
+      ['tent', -4.0, -1.7], ['tent', 2.3, -2.4], ['crates', -1.7, -2.3], ['crates', 2.1, -5.0], ['drums', 0.4, -2.2],
+      ['jeep', -0.4, -4.6, 1], ['jeep', 4.6, -2.6], ['tower', -4.75, -11.45], ['tower', 4.75, -11.45], ['truck', -4.75, -7.4],
+    ],
+  },
+  {
+    world: 'picnic', name: 'Picnic', hint: 'Tap the picnic to launch your ant', win: 'Picnic carried off', seed: 4321,
+    holes: [[0, 3.0]],
+    smalls: ['sugar', 'cherry', 'cookie', 'candy'], scatter: [[8, 1.2, 4.8], [7, -6.8, -1.0], [5, -12.2, -6.8]],
+    // spaced for food at 1.35x: nothing closer than 0.2 m; five chocolate bars and two cupcakes instead of eight and three
+    layout: [
+      ['cake', 0, -10.0], ['melon', -3.9, -5.6], ['burger', 0.9, -4.0],
+      ['chocbar', -3.1, -9.3, 1], ['chocbar', 3.1, -9.3, 1],
+      ['chocbar', -3.9, 0.6], ['chocbar', 0, 0.6], ['chocbar', 3.9, 0.6],
+      ['shake', -4.85, -11.6], ['shake', 4.85, -11.6], ['pizza', 3.9, -6.3],
+      ['sandwich', -1.3, -6.4], ['sandwich', 4.4, -2.6], ['cheese', -4.4, -2.6], ['cheese', 1.3, -6.6],
+      ['cupcake', -1.9, -3.4], ['cupcake', 2.6, -2.0],
+      ['donut', -0.4, -1.8], ['donut', -4.6, -8.6], ['donut', 4.8, -8.9],
+    ],
+  },
+  {
+    // after Ant Swarm's stacked food: every piece is a rigid body, so eating one away drops or topples what it held up
+    world: 'table', name: 'Sweet stacks', hint: 'Tap the table to launch your ant', win: 'Stacks carried off', seed: 2468, physics: true,
+    holes: [[-3.4, 3.1], [0, 2.5], [3.4, 3.1]],
+    smalls: ['sugar', 'cherry', 'cookie', 'candy'], scatter: [[7, 1.4, 4.8], [5, -7.0, -1.2], [3, -12.2, -7.2]],
+    layout: [],
+    // stack rows: [stack, x, z, objective name]
+    // spaced for food at 1.35x: the tall cake alone at the back, chocolate towers and pyramids toward the sides
+    stacks: [
+      ['cake', 0, -10.2, 'Cake'], ['pancakes', -3.6, -5.2, 'Pancakes'], ['burger', 3.4, -4.7, 'Burger'],
+      ['jenga', -3.6, -0.9], ['pyramid', 3.6, -0.6], ['pyramid', -3.9, -8.4],
+      ['donuts', 0.2, -6.4], ['donuts', -4.6, -11.2], ['donuts', 0.6, -1.7],
+      ['cookies', 4.7, -11.3], ['cookies', -0.9, -3.6], ['cookies', 4.7, -2.4],
+      ['jenga', 3.9, -8.6],
+    ],
+  },
+];
+// stacks are listed bottom to top; jenga and pyramid are laid out by hand in buildStack
+const STACKS = {
+  cake: ['tierBig', 'tierMid', 'tierTop'],
+  pancakes: ['pancake', 'pancake', 'pancake', 'pancake', 'pancake', 'pancake', 'pancake', 'pancakeTop'],
+  burger: ['bunBottom', 'pattyLayer', 'cheeseSlab', 'lettuceLeaf', 'tomatoSlab', 'pattyLayer', 'bunTop'],
+  donuts: ['donut', 'donut', 'donut', 'donut'],
+  cookies: ['cookie', 'cookie', 'cookie', 'cookie', 'cookie'],
+};
+
+const levelGroup = new THREE.Group(); scene.add(levelGroup);
+const objects = [];
+const ringGeo = new THREE.RingGeometry(1, 1.09, 48);
+
+// ================= food is carried off whole =================
+// a still object's parts are welded into one mesh per material, so a sprinkled donut is two draw calls, not fourteen
+// (objects with moving parts, like a flag, the radar dish or candle flames, keep theirs)
+function mergeParts(o) {
+  if (o.flag || o.spin || o.anim) return;
+  if (o.group.children.some((m) => !m.isMesh)) return; // a nested group: leave the object as built
+  const byMat = new Map();
+  for (const m of o.group.children) {
+    m.updateMatrix(); let geo = m.geometry.clone().applyMatrix4(m.matrix);
+    if (geo.index) { const flat = geo.toNonIndexed(); geo.dispose(); geo = flat; }
+    if (!byMat.has(m.material)) byMat.set(m.material, []);
+    byMat.get(m.material).push(geo);
+  }
+  const merged = [];
+  for (const [mt, geos] of byMat) { const g = mergeGeometries(geos); geos.forEach((x) => x.dispose()); if (!g) { merged.forEach(([, x]) => x.dispose()); return; } merged.push([mt, g]); }
+  for (const m of [...o.group.children]) { o.group.remove(m); m.geometry.dispose(); }
+  for (const [mt, g] of merged) { const mesh = new THREE.Mesh(g, mt); mesh.castShadow = true; mesh.receiveShadow = true; o.group.add(mesh); }
+}
+// ================= physics: stacked levels only =================
+// Each piece is a box collider in a cannon-es world. Pieces start asleep, perfectly stacked; lifting one away
+// wakes its neighbours, and a ball landing close shoves them, so a stack can tip and tumble. Low invisible rails keep it on the table.
+const PHYS = { on: false, world: null };
+function physicsReset(on) {
+  PHYS.on = on; PHYS.world = null; if (!on) return;
+  const w = new CANNON.World({ gravity: new CANNON.Vec3(0, -16, 0), allowSleep: true });
+  // the naive broadphase: sweep-and-prune misses the pairs between the wide cake tiers once they wake, and they fall
+  // through each other; a hundred-odd bodies, most asleep, are cheap to check pair by pair
+  w.broadphase = new CANNON.NaiveBroadphase(); w.solver.iterations = 14;
+  w.defaultContactMaterial.friction = 0.55; w.defaultContactMaterial.restitution = 0.05;
+  const floor = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() }); floor.quaternion.setFromEuler(-Math.PI / 2, 0, 0); w.addBody(floor);
+  const cz = (FIELD.z0 + FIELD.z1) / 2, hzF = (FIELD.z1 - FIELD.z0) / 2 + 0.6, hxF = (FIELD.x1 - FIELD.x0) / 2 + 0.6;
+  for (const [x, z, hx, hz] of [[FIELD.x0 - 0.3, cz, 0.3, hzF], [FIELD.x1 + 0.3, cz, 0.3, hzF], [0, FIELD.z0 - 0.3, hxF, 0.3], [0, FIELD.z1 + 0.3, hxF, 0.3]]) {
+    const b = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(hx, 1.5, hz)) }); b.position.set(x, 1.5, z); w.addBody(b);
+  }
+  PHYS.world = w;
+}
+function addBody(o) {
+  const [ex, ey, ez] = o.ext;
+  const body = new CANNON.Body({ mass: Math.max(0.05, 8 * ex * ey * ez), shape: new CANNON.Box(new CANNON.Vec3(ex, ey, ez)),
+    linearDamping: 0.08, angularDamping: 0.25, allowSleep: true, sleepSpeedLimit: 0.25, sleepTimeLimit: 0.4 });
+  body.position.set(o.x, o.y0 + ey, o.z); body.quaternion.setFromEuler(0, o.yaw, 0);
+  PHYS.world.addBody(body); body.sleep(); o.body = body;
+}
+function removeBody(o) {
+  if (!o.body) return;
+  PHYS.world.removeBody(o.body); o.body = null;
+  for (const q of objects) if (q.alive && q.body && Math.abs(q.x - o.x) < 3 && Math.abs(q.z - o.z) < 3) q.body.wakeUp();
+}
+const _q3 = new THREE.Quaternion(), _m3 = new THREE.Matrix4(), _off = new V3();
+// copy each body onto its model, and keep the piece's footprint and height as the rotated box's bounds
+function syncBodies() {
+  for (const o of objects) {
+    if (!o.alive || !o.body) continue;
+    const p = o.body.position, q = o.body.quaternion, [ex, ey, ez] = o.ext;
+    _q3.set(q.x, q.y, q.z, q.w); _off.set(0, -ey, 0).applyQuaternion(_q3);
+    o.group.position.set(p.x + _off.x, p.y + _off.y, p.z + _off.z); o.group.quaternion.copy(_q3);
+    _m3.makeRotationFromQuaternion(_q3); const e = _m3.elements;
+    o.hx = Math.abs(e[0]) * ex + Math.abs(e[4]) * ey + Math.abs(e[8]) * ez;
+    const hy = Math.abs(e[1]) * ex + Math.abs(e[5]) * ey + Math.abs(e[9]) * ez;
+    o.hz = Math.abs(e[2]) * ex + Math.abs(e[6]) * ey + Math.abs(e[10]) * ez;
+    o.x = p.x; o.z = p.z; o.y0 = p.y - hy; o.topY = p.y + hy;
+  }
+}
+// a point just outside a piece's footprint, in the direction ang
+function sidePoint(o, ang) {
+  const cx = Math.cos(ang), cz = Math.sin(ang), t = 1 / Math.max(Math.abs(cx) / o.hx, Math.abs(cz) / o.hz) + 0.14;
+  return [o.x + cx * t, o.z + cz * t];
+}
+// a piece with another resting on it can't be lifted: a stack is carried off from the top down
+function updateSupport() {
+  for (const o of objects) {
+    o.covered = false;
+    if (!o.alive || !o.body) continue;
+    for (const q of objects) {
+      if (q === o || !q.alive || !q.body || q.y0 < o.topY - 0.15 || q.y0 > o.topY + 0.2) continue;
+      if (Math.abs(q.x - o.x) < q.hx + o.hx - 0.08 && Math.abs(q.z - o.z) < q.hz + o.hz - 0.08) { o.covered = true; break; }
+    }
+  }
+}
+const canLift = (o) => o.alive && !o.carried && !o.covered;
+function stepPhysics(dt) {
+  if (!PHYS.on) return;
+  PHYS.world.step(1 / 60, dt, 4);
+  syncBodies(); updateSupport();
+}
+
+function spawnObject(kind, x, z, quarterTurns = 0, freeYaw = null, opt = {}) {
+  const def = KINDS[kind]; const b = BUILD[kind]();
+  const y0 = opt.y0 || 0, k = FOOD_SCALE;
+  let hx = b.hx * k, hz = b.hz * k, yaw = 0;
+  if (freeYaw !== null) { yaw = freeYaw; hx = hz = Math.max(b.hx, b.hz) * 0.85 * k; }
+  else if (quarterTurns) { yaw = quarterTurns * Math.PI / 2; if (quarterTurns % 2) [hx, hz] = [hz, hx]; }
+  b.g.position.set(x, y0, z); b.g.rotation.y = yaw; b.g.scale.setScalar(k);
+  const tiers = b.tiers || (b.round ? [[1, b.h]] : null);
+  const o = {
+    kind, x, z, hx, hz, h: b.h * k, y0, topY: y0 + b.h * k, alive: true, group: b.g, color: b.color,
+    need: def.need <= 1 ? 1 : Math.max(2, Math.round(def.need * CFG.needScale)), gift: Math.max(1, Math.round(def.gift * CFG.giftScale)),
+    objective: opt.objective || def.objective || null, pop: 0, flag: b.flag || null, spin: b.spin || null, ring: null,
+    tiers: PHYS.on || !tiers ? null : tiers.map(([f, th]) => [f, th * k]), anim: b.anim || null, round: !!tiers,
+    ext: (b.ext || [b.hx, b.h / 2, b.hz]).map((v) => v * k), yaw, body: null, covered: false,
+    // claim: the swarm going for it; once carried it rides at off from (x, y0, z), carryH tall
+    claim: null, carried: false, off: null, carryH: 0,
+  };
+  mergeParts(o);
+  if (o.objective) {
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xe2462f, transparent: true, opacity: 0.8, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.02, z); ring.userData.base = Math.max(hx, hz) + 0.4;
+    ring.scale.setScalar(ring.userData.base); scene.add(ring); o.ring = ring;
+  }
+  if (PHYS.on) addBody(o);
+  levelGroup.add(b.g); objects.push(o); return o;
+}
+function buildStack(type, x, z, objective, rng) {
+  const opt = (y0) => ({ y0, objective });
+  if (type === 'jenga') {
+    // four layers of three chocolate bars, each layer crossways to the one below
+    const s = FOOD_SCALE;
+    for (let L = 0; L < 4; L++) for (const k of [-1, 0, 1]) {
+      if (L % 2 === 0) spawnObject('chocBlock', x, z + k * 0.6 * s, 0, null, opt(L * 0.32 * s));
+      else spawnObject('chocBlock', x + k * 0.6 * s, z, 1, null, opt(L * 0.32 * s));
+    }
+    return;
+  }
+  if (type === 'pyramid') {
+    // sugar cubes: three by three, two by two, then one on top, each sitting across the joins below
+    let y = 0;
+    for (const n of [3, 2, 1]) {
+      const g = 0.4 * FOOD_SCALE;
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) spawnObject('sugar', x + (i - (n - 1) / 2) * g, z + (j - (n - 1) / 2) * g, 0, null, opt(y));
+      y += 0.38 * FOOD_SCALE;
+    }
+    return;
+  }
+  let y = 0;
+  for (const kind of STACKS[type]) {
+    const yaw = kind === 'cheeseSlab' ? Math.PI / 4 + (rng() - 0.5) * 0.2 : (rng() - 0.5) * 0.6;
+    const o = spawnObject(kind, x + (rng() - 0.5) * 0.06, z + (rng() - 0.5) * 0.06, 0, yaw, opt(y));
+    y = o.topY + 0.002;
+  }
+}
+
+function buildLevel(L) {
+  const rng = mulberry32(L.seed);
+  for (const [k, x, z, q] of L.layout) spawnObject(k, x, z, q || 0);
+  for (const [type, x, z, objective] of L.stacks || []) buildStack(type, x, z, objective, rng);
+  const scatter = (n, zA, zB) => {
+    let placed = 0, tries = 0;
+    while (placed < n && tries++ < 800) {
+      const x = FIELD.x0 + 0.6 + rng() * (FIELD.x1 - FIELD.x0 - 1.2);
+      const z = zA + rng() * (zB - zA);
+      // room for the snack itself (at FOOD_SCALE) plus a clear gap
+      if (objects.some((o) => Math.abs(o.x - x) < o.hx + 0.7 && Math.abs(o.z - z) < o.hz + 0.7)) continue;
+      if ((L.holes || []).some(([px, pz]) => Math.hypot(px - x, pz - z) < 1.6)) continue;
+      spawnObject(L.smalls[(rng() * L.smalls.length) | 0], x, z, 0, rng() * TAU); placed++;
+    }
+  };
+  for (const [n, zA, zB] of L.scatter) scatter(n, zA, zB);
+}
+
+// ================= height field (ants climb whatever is under them) =================
+const HM = { x0: -8, z0: -15, cs: 0.2, nx: 80, nz: 110 };
+const hgrid = new Float32Array(HM.nx * HM.nz);
+function rebuildHeight() {
+  hgrid.fill(0);
+  for (const o of objects) {
+    if (!o.alive || o.carried) continue; // carried food rides over the ground, it isn't part of it
+    const hx = o.hx, hz = o.hz, top = o.topY;
+    const i0 = Math.max(0, Math.floor((o.x - hx - HM.x0) / HM.cs)), i1 = Math.min(HM.nx - 1, Math.floor((o.x + hx - HM.x0) / HM.cs));
+    const j0 = Math.max(0, Math.floor((o.z - hz - HM.z0) / HM.cs)), j1 = Math.min(HM.nz - 1, Math.floor((o.z + hz - HM.z0) / HM.cs));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      let t = top;
+      if (o.tiers) {
+        // round objects: ants follow the outline and step up each tier
+        const dx = (HM.x0 + (i + 0.5) * HM.cs - o.x) / hx, dz = (HM.z0 + (j + 0.5) * HM.cs - o.z) / hz, q = dx * dx + dz * dz;
+        t = 0; for (const [f, h] of o.tiers) if (q <= f * f && h > t) t = h;
+      }
+      const k = j * HM.nx + i; if (hgrid[k] < t) hgrid[k] = t;
+    }
+  }
+}
+function heightAt(x, z) {
+  const i = Math.floor((x - HM.x0) / HM.cs), j = Math.floor((z - HM.z0) / HM.cs);
+  return (i < 0 || j < 0 || i >= HM.nx || j >= HM.nz) ? 0 : hgrid[j * HM.nx + i];
+}
+
+// ================= the way home =================
+// A walking distance out from the holes over the height grid, round anything taller than a snack (grown by a
+// cell, so a carried piece's edge mostly clears it). Carried food heads for the furthest point down it that it can see
+// in a straight line, so it goes round towers and walls instead of over them, and only rides over low snacks.
+const TALL = 0.75;
+const homeD = new Float32Array(HM.nx * HM.nz), homeQ = new Int32Array(HM.nx * HM.nz), homeBlock = new Uint8Array(HM.nx * HM.nz);
+const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const cellOf = (x, z) => { const i = Math.floor((x - HM.x0) / HM.cs), j = Math.floor((z - HM.z0) / HM.cs); return i < 0 || j < 0 || i >= HM.nx || j >= HM.nz ? -1 : j * HM.nx + i; };
+const cellX = (k) => HM.x0 + (k % HM.nx + 0.5) * HM.cs, cellZ = (k) => HM.z0 + (((k / HM.nx) | 0) + 0.5) * HM.cs;
+// the way home never leaves the play area
+const offField = new Uint8Array(HM.nx * HM.nz);
+for (let k = 0; k < offField.length; k++) {
+  const x = cellX(k), z = cellZ(k);
+  offField[k] = x < FIELD.x0 - 0.3 || x > FIELD.x1 + 0.3 || z < FIELD.z0 - 0.3 || z > FIELD.z1 + 0.3 ? 1 : 0;
+}
+// the neighbour of cell (i, j) one step along (a, b), or -1 when that is off the grid or would cut a blocked corner
+function stepTo(i, j, a, b) {
+  const ii = i + a, jj = j + b; if (ii < 0 || jj < 0 || ii >= HM.nx || jj >= HM.nz) return -1;
+  if (a && b && (homeBlock[j * HM.nx + ii] || homeBlock[jj * HM.nx + i])) return -1;
+  return jj * HM.nx + ii;
+}
+let homeT = 0;
+function rebuildHome() {
+  const nx = HM.nx, nz = HM.nz;
+  homeBlock.set(offField);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    if (hgrid[j * nx + i] < TALL) continue;
+    for (let b = Math.max(0, j - 1); b <= Math.min(nz - 1, j + 1); b++) for (let a = Math.max(0, i - 1); a <= Math.min(nx - 1, i + 1); a++) homeBlock[b * nx + a] = 1;
+  }
+  homeD.fill(Infinity); let head = 0, tail = 0;
+  for (const h of holes) { const k = cellOf(h.x, h.z); if (k >= 0) { homeD[k] = 0; homeQ[tail++] = k; } }
+  while (head < tail) {
+    const k = homeQ[head++], i = k % nx, j = (k / nx) | 0, d = homeD[k] + 1;
+    for (const [a, b] of N8) {
+      const kk = stepTo(i, j, a, b); if (kk < 0 || homeBlock[kk] || homeD[kk] !== Infinity) continue;
+      homeD[kk] = d; homeQ[tail++] = kk;
+    }
+  }
+}
+// nothing tall stands on the straight line between two points
+function clearLine(x0, z0, x1, z1) {
+  const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / (HM.cs * 0.2));
+  for (let i = 1; i <= n; i++) { const k = cellOf(x0 + (x1 - x0) * i / n, z0 + (z1 - z0) * i / n); if (k >= 0 && homeBlock[k]) return false; }
+  return true;
+}
+// the cell carried food at (x, z) should head for next, or -1 to make straight for the hole. Food that is off the
+// way home (right beside something tall, or a piece just lifted off the top of a stack) first steps off to the
+// nearest point on it, so it never cuts across what it was standing next to.
+function homeAim(x, z) {
+  let k = cellOf(x, z); if (k < 0) return -1;
+  let aim = -1;
+  if (homeD[k] === Infinity) {
+    // in the margin round something tall: carry on from the best cell next to it, never back the way it came
+    const i = k % HM.nx, j = (k / HM.nx) | 0; let best = -1, bd = Infinity;
+    for (const [a, b] of N8) {
+      const ii = i + a, jj = j + b; if (ii < 0 || jj < 0 || ii >= HM.nx || jj >= HM.nz) continue;
+      const kk = jj * HM.nx + ii; if (homeD[kk] < bd) { bd = homeD[kk]; best = kk; }
+    }
+    if (best < 0) {
+      // further off it: step off to the nearest point on it
+      for (let b = -8; b <= 8; b++) for (let a = -8; a <= 8; a++) {
+        const ii = i + a, jj = j + b; if (ii < 0 || jj < 0 || ii >= HM.nx || jj >= HM.nz) continue;
+        const kk = jj * HM.nx + ii, d = a * a + b * b; if (homeD[kk] !== Infinity && d < bd) { bd = d; best = kk; }
+      }
+      return best;
+    }
+    k = aim = best;
+  }
+  // walk down the field while the next cell is still in a straight line of sight; if even the first step isn't
+  // (food sitting in the corner of its cell), make for the middle of its own cell first
+  for (let n = 0; n < 30 && homeD[k] > 0; n++) {
+    let next = k; const i = k % HM.nx, j = (k / HM.nx) | 0;
+    for (const [a, b] of N8) { const kk = stepTo(i, j, a, b); if (kk >= 0 && homeD[kk] < homeD[next]) next = kk; }
+    if (next === k) break;
+    if (!clearLine(x, z, cellX(next), cellZ(next))) { if (aim < 0) aim = k; break; }
+    k = aim = next;
+  }
+  return aim;
+}
+
+// ================= ant holes =================
+// a dark hole in a low ring of dug-out earth: carried food goes down it, and the ants come back up into the cannon
+const HOLE_R = 0.62;
+const holeGroup = new THREE.Group(); scene.add(holeGroup);
+const HOLE_MAT = { dirt: mat(0xb9824a), crumb: mat(0x8a5a30), pit: new THREE.MeshBasicMaterial({ color: 0x24160c }) };
+const HOLE_GEO = { mound: new THREE.TorusGeometry(HOLE_R + 0.2, 0.26, 8, 28), pit: new THREE.CircleGeometry(HOLE_R + 0.06, 28), crumb: new THREE.DodecahedronGeometry(0.09) };
+let holes = [];
+function buildHoles(list) {
+  for (const h of holes) holeGroup.remove(h.g);
+  holes = list.map(([x, z]) => {
+    const g = new THREE.Group(); g.position.set(x, 0, z);
+    const mound = new THREE.Mesh(HOLE_GEO.mound, HOLE_MAT.dirt); mound.rotation.x = -Math.PI / 2; mound.scale.z = 0.45; mound.position.y = 0.02;
+    mound.castShadow = true; mound.receiveShadow = true; g.add(mound);
+    const pit = new THREE.Mesh(HOLE_GEO.pit, HOLE_MAT.pit); pit.rotation.x = -Math.PI / 2; pit.position.y = 0.03; g.add(pit);
+    // a few crumbs of dug earth round the rim
+    for (let i = 0; i < 7; i++) {
+      const a = i / 7 * TAU + 0.3, r = HOLE_R + 0.55 + (i % 3) * 0.08;
+      const c = new THREE.Mesh(HOLE_GEO.crumb, HOLE_MAT.crumb); c.position.set(Math.cos(a) * r, 0.04, Math.sin(a) * r); c.castShadow = true; g.add(c);
+    }
+    holeGroup.add(g);
+    return { x, z, g, pop: 0 };
+  });
+}
+const nearestHole = (x, z) => holes.reduce((b, h) => (Math.hypot(h.x - x, h.z - z) < Math.hypot(b.x - x, b.z - z) ? h : b), holes[0]);
+
+// ================= launcher: a cannon, after Base Demolish =================
+// A fat iron mortar with gold bands on a wooden carriage, right in front of the camera and cut off by the bottom
+// of the screen, seen from behind. The next glass ball sits in its mouth with its ants showing; the cannon swings
+// to face where you aim and kicks back with a puff of smoke when it fires.
+const CMAT = {
+  iron: mat(0x5a6b80, { flatShading: false, metalness: 0.3, roughness: 0.4 }), bore: mat(0x1d2128, { flatShading: false }),
+  gold: mat(0xf2b632, { flatShading: false, metalness: 0.45, roughness: 0.35 }), wood: mat(0xb0743c), woodDark: mat(0x7d4c22),
+};
+const launcher = new THREE.Group(); scene.add(launcher); // turns to aim, about the vertical through the ball
+const cannon = new THREE.Group(); launcher.add(cannon); // kicks back when it fires
+const GUN = { tilt: 0.62, pivot: 1.05, trunnionY: 1.1, ballOut: 0.42, scale: BALL_SCALE, at: new V3(0, -0.4, 10.9) };
+(function buildCannon() {
+  // the barrel: a lathe profile from the breech knob to a flared mouth, along +y, leaning toward the island
+  const prof = [[0, -0.42], [0.22, -0.4], [0.34, -0.3], [0.36, -0.18], [0.28, -0.06], [0.62, 0.05], [1.12, 0.32], [1.4, 0.72], [1.48, 1.15],
+    [1.4, 1.65], [1.18, 2.12], [1.04, 2.42], [1.1, 2.58], [1.3, 2.84], [1.34, 3.0], [1.06, 3.02], [1.03, 2.7], [0, 2.6]];
+  const barrel = new THREE.Group(); barrel.position.y = GUN.trunnionY; barrel.rotation.x = -GUN.tilt; cannon.add(barrel);
+  const body = new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 32), CMAT.iron);
+  body.position.y = -GUN.pivot; body.castShadow = true; barrel.add(body);
+  add(barrel, cyl(1.02, 1.02, 0.04, 24), CMAT.bore, 0, 2.62 - GUN.pivot, 0);
+  for (const [y, r] of [[0.32, 1.13], [1.6, 1.42], [2.46, 1.06], [2.98, 1.35]]) add(barrel, new THREE.TorusGeometry(r, 0.085, 10, 32), CMAT.gold, 0, y - GUN.pivot, 0, Math.PI / 2, 0, 0);
+  add(barrel, cyl(0.26, 0.26, 3.5, 14), CMAT.iron, 0, 0, 0, 0, 0, Math.PI / 2);
+  // the carriage: two wooden cheeks either side, capped with darker boards and gold trunnion caps, on a base block
+  for (const sx of [-1, 1]) {
+    add(cannon, box(0.5, 1.6, 2.6), CMAT.wood, sx * 1.95, 0.55, 0.2);
+    add(cannon, box(0.56, 0.14, 2.66), CMAT.woodDark, sx * 1.95, 1.33, 0.2);
+    add(cannon, cyl(0.3, 0.3, 0.1, 14), CMAT.gold, sx * 2.22, GUN.trunnionY, 0, 0, 0, Math.PI / 2);
+  }
+  add(cannon, box(3.4, 0.5, 2.2), CMAT.woodDark, 0, -0.1, 0.4);
+  // shift the cannon so the ball in its mouth sits right on the turning axis
+  const h = 3.0 - GUN.pivot + GUN.ballOut;
+  GUN.ballY = GUN.trunnionY + h * Math.cos(GUN.tilt); GUN.ballZ = -h * Math.sin(GUN.tilt);
+  cannon.position.z = -GUN.ballZ;
+  launcher.position.copy(GUN.at); launcher.scale.setScalar(GUN.scale);
+  BALL_HOME.set(GUN.at.x, GUN.at.y + GUN.ballY * GUN.scale, GUN.at.z);
+})();
+let aimYaw = 0;
+// smoke from the mouth when it fires
+const puffGeo = new THREE.SphereGeometry(0.5 * BALL_SCALE, 10, 8), puffs = [];
+function smoke(at) {
+  for (let i = 0; i < 7; i++) {
+    const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color: 0xf4f1ea, transparent: true, opacity: 0.85, depthWrite: false }));
+    m.position.copy(at); scene.add(m);
+    puffs.push({ m, v: new V3((rand() - 0.5) * 2.6, 1.2 + rand() * 1.8, -0.4 - rand() * 1.8).multiplyScalar(BALL_SCALE), t: 0, life: 0.45 + rand() * 0.3 });
+  }
+}
+function updatePuffs(dt) {
+  for (let i = puffs.length - 1; i >= 0; i--) {
+    const p = puffs[i]; p.t += dt; const k = p.t / p.life;
+    if (k >= 1) { scene.remove(p.m); p.m.material.dispose(); puffs.splice(i, 1); continue; }
+    p.m.position.addScaledVector(p.v, dt); p.m.scale.setScalar(0.6 + k * 1.8); p.m.material.opacity = 0.85 * (1 - k);
+  }
+}
+
+// ================= worlds: the surface laid on the island for each level =================
+// Each is a calm, near-flat sheet with a darker border, inset inside the island's rounded grass edge.
+// Nothing else stands anywhere: every object in a level is food.
+function sheet(g, w, d, m, y) {
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); p.rotation.x = -Math.PI / 2; p.position.set(0, y, ISLAND.cz); p.receiveShadow = true; g.add(p);
+}
+const flatMat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 1 });
+const WORLDS = {
+  base: {
+    // a plain packed-sand yard
+    build(g) { sheet(g, 12.5, 18.5, flatMat(0xc2a56c), 0.003); sheet(g, 12.1, 18.1, flatMat(0xdcc38e), 0.006); },
+  },
+  picnic: {
+    build(g) { sheet(g, 12.5, 18.5, flatMat(0x2c5a9e), 0.003); sheet(g, 12.1, 18.1, new THREE.MeshStandardMaterial({ map: ginghamTexture(), roughness: 1 }), 0.006); },
+  },
+  table: {
+    // a painted plank board with a slate border
+    build(g) { sheet(g, 12.5, 18.5, flatMat(0x4b5d66), 0.003); sheet(g, 12.1, 18.1, new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.9 }), 0.006); },
+  },
+};
+const worldGroups = {};
+function applyWorld(id) {
+  if (!worldGroups[id]) { const g = new THREE.Group(); WORLDS[id].build(g); scene.add(g); worldGroups[id] = g; }
+  for (const k in worldGroups) worldGroups[k].visible = k === id;
+  gameEl.dataset.world = id;
+}
+
+// ================= glass balls =================
+const ballGeo = new THREE.SphereGeometry(BALL_R, 40, 28);
+const rimMat = new THREE.ShaderMaterial({
+  uniforms: { uColor: { value: new THREE.Color(0xe8f8ff) } },
+  vertexShader: `varying vec3 vN; varying vec3 vV;
+    void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: `uniform vec3 uColor; varying vec3 vN; varying vec3 vV;
+    void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2); gl_FragColor = vec4(uColor, 0.07 + 0.78 * f); }`,
+  transparent: true, depthWrite: false,
+});
+const backMat = new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: 0.14, side: THREE.BackSide, depthWrite: false });
+const shineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false });
+const shineGeo = new THREE.SphereGeometry(0.11, 14, 8);
+const shadowMat = new THREE.MeshBasicMaterial({ color: 0x1f2716, transparent: true, opacity: 0.25, depthWrite: false });
+const shadowGeo = new THREE.CircleGeometry(BALL_R * 0.9, 24);
+
+const balls = [];
+let readyBall = null;
+function spawnBall() {
+  const root = new THREE.Group(); const spin = new THREE.Group(); root.add(spin);
+  const back = new THREE.Mesh(ballGeo, backMat); back.renderOrder = 2;
+  const rim = new THREE.Mesh(ballGeo, rimMat); rim.renderOrder = 3;
+  root.add(back, rim);
+  for (const [dir, sc] of [[new V3(-0.45, 0.78, 0.45), [1.7, 0.9, 0.25]], [new V3(-0.15, 0.6, 0.78), [0.55, 0.4, 0.2]]]) {
+    const sh = new THREE.Mesh(shineGeo, shineMat); sh.renderOrder = 4;
+    sh.position.copy(dir.normalize().multiplyScalar(BALL_R * 0.99)); sh.lookAt(0, 0, 0); sh.scale.set(...sc); root.add(sh);
+  }
+  const shadow = new THREE.Mesh(shadowGeo, shadowMat); shadow.rotation.x = -Math.PI / 2; shadow.visible = false; scene.add(shadow);
+  root.position.copy(BALL_HOME); root.scale.setScalar(0.01); scene.add(root);
+  const b = { root, spin, shadow, ants: [], state: 'ready', appear: 0, t: 0, from: new V3(), to: new V3(), dur: 1, arc: 2, deny: 0 };
+  balls.push(b); return b;
+}
+function removeBall(b) { scene.remove(b.root); scene.remove(b.shadow); const i = balls.indexOf(b); if (i >= 0) balls.splice(i, 1); }
+
+// ================= ants =================
+function antGeometry() {
+  const parts = [];
+  const put = (g, x, y, z, s = [1, 1, 1], r = [0, 0, 0]) => { g.scale(...s); g.rotateX(r[0]); g.rotateY(r[1]); g.rotateZ(r[2]); g.translate(x, y, z); parts.push(g); };
+  put(new THREE.SphereGeometry(0.07, 8, 6), 0, 0.075, -0.085, [1, 0.85, 1.35]);
+  put(new THREE.SphereGeometry(0.04, 6, 5), 0, 0.07, 0.0, [1, 0.9, 1.3]);
+  put(new THREE.SphereGeometry(0.05, 8, 6), 0, 0.078, 0.078, [1, 0.9, 1]);
+  for (const side of [-1, 1]) for (const k of [-1, 0, 1]) put(new THREE.BoxGeometry(0.15, 0.014, 0.014), side * 0.07, 0.042, k * 0.035, [1, 1, 1], [0, k * side * 0.5, -side * 0.38]);
+  for (const side of [-1, 1]) put(new THREE.BoxGeometry(0.012, 0.012, 0.1), side * 0.026, 0.115, 0.135, [1, 1, 1], [-0.55, side * 0.4, 0]);
+  return mergeGeometries(parts.map((p) => p.toNonIndexed())).scale(ANT_SCALE, ANT_SCALE, ANT_SCALE);
+}
+const antMesh = new THREE.InstancedMesh(antGeometry(), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0.05 }), MAX_ANTS);
+antMesh.castShadow = true; antMesh.frustumCulled = false; antMesh.count = 0;
+const ANT_COLORS = [0x3e1a10, 0x4d2013, 0x31150c, 0x5a2616].map((c) => new THREE.Color(c));
+for (let i = 0; i < MAX_ANTS; i++) antMesh.setColorAt(i, ANT_COLORS[0]);
+scene.add(antMesh);
+
+const ants = [];
+let swarms = [];
+let swarmSeq = 0;
+function makeAnt() {
+  return {
+    p: new V3(), v: new V3(), yaw: rand() * TAU, pitch: 0, roll: 0, mode: 'ball', ball: null, local: new V3(), rest: new V3(), wT: rand() * 2,
+    swarm: null, off: new THREE.Vector2(), spot: new THREE.Vector2(), spd: 0.85 + rand() * 0.3, ph: rand() * TAU, atSpot: false, hidden: false, ang: 0,
+    color: pick(ANT_COLORS),
+  };
+}
+function ballSpot(out, crowd) {
+  const R = BALL_R * 0.78; const lift = Math.min(0.32, crowd * 0.006);
+  const y = -R * (0.55 + 0.35 * rand()) + lift * rand();
+  const rr = Math.sqrt(Math.max(0, R * R - y * y)) * 0.8 * Math.sqrt(rand()); const a = rand() * TAU;
+  return out.set(Math.cos(a) * rr, y, Math.sin(a) * rr);
+}
+function addAntToBall(b, instant) {
+  if (ants.length >= MAX_ANTS) return;
+  const a = makeAnt(); a.mode = 'ball'; a.ball = b; ballSpot(a.rest, b.ants.length); a.local.copy(a.rest);
+  if (!instant) a.local.y = BALL_R * 0.55;
+  b.ants.push(a); ants.push(a);
+}
+
+function newSwarm(P) {
+  const s = { id: ++swarmSeq, ants: [], c: P.clone(), lead: new V3(P.x, 0, P.z), r: 0.2, target: null, state: 'move', think: 0, pulse: 1, idleT: 0, idle: false, hole: null, t: 0 };
+  swarms.push(s); return s;
+}
+// a swarm takes on one piece of food: it claims it, so no other swarm walks to it, and each ant gets its own place round it
+function setTarget(s, o) {
+  s.target = o; o.claim = s; s.state = 'move'; s.t = 0; s.lead.set(s.c.x, 0, s.c.z);
+  const n = s.ants.length;
+  s.ants.forEach((a, i) => { a.ang = (i + rand() * 0.6) / n * TAU; a.spot.set(rand() * 2 - 1, rand() * 2 - 1); });
+}
+function dropTarget(s) {
+  if (s.target && s.target.claim === s) s.target.claim = null;
+  s.target = null; s.state = 'move'; s.lead.set(s.c.x, 0, s.c.z); s.think = 0;
+}
+// swarms only notice food near them, so where a ball lands matters
+const senseRange = (s) => CFG.sense + Math.min(3, s.ants.length * 0.03);
+// a swarm only goes for food it has the ants to lift. Close food first; it leans toward the biggest piece it can
+// lift, so its ants aren't spent on crumbs, and toward objectives. In a stack, ants on the table go for low
+// pieces and ants on top for the top ones.
+function pickTarget(s) {
+  const n = s.ants.length, range = senseRange(s); let best = null, bs = Infinity;
+  for (const o of objects) {
+    if (!canLift(o) || o.claim || o.need > n) continue;
+    const d = Math.hypot(o.x - s.c.x, o.z - s.c.z) - Math.max(o.hx, o.hz);
+    if (d > range) continue;
+    const dy = Math.max(0, o.y0 - s.c.y - 0.2, s.c.y - o.topY - 0.2);
+    const score = d + dy * 0.8 - 3 * o.need / n - (o.objective ? 3 : 0);
+    if (score < bs) { bs = score; best = o; }
+  }
+  return best;
+}
+// the ants closest to the food go for it, exactly as many as it takes; the rest stay a swarm and look for more
+function dispatch(s, o) {
+  if (s.ants.length <= o.need) { setTarget(s, o); return s; }
+  const dist = (a) => Math.hypot(a.p.x - o.x, a.p.z - o.z);
+  s.ants.sort((a, b) => dist(a) - dist(b));
+  const c = newSwarm(s.c); c.ants = s.ants.splice(0, o.need);
+  let cx = 0, cy = 0, cz = 0; for (const a of c.ants) { a.swarm = c; cx += a.p.x; cy += a.p.y; cz += a.p.z; }
+  const k = c.ants.length; c.c.set(cx / k, cy / k, cz / k); c.r = 0.22 + 0.12 * Math.sqrt(k);
+  setTarget(c, o); s.pulse = 1;
+  return c;
+}
+function mergeSwarms(a, b) {
+  const big = a.ants.length >= b.ants.length ? a : b; const small = big === a ? b : a;
+  for (const ant of small.ants) { ant.swarm = big; ant.spot.set(rand() * 2 - 1, rand() * 2 - 1); big.ants.push(ant); }
+  small.ants.length = 0; big.pulse = 1; big.think = 0; big.idleT = 0;
+}
+
+// ================= particles =================
+const shardMesh = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.1), new THREE.MeshStandardMaterial({ color: 0xdff5ff, transparent: true, opacity: 0.75, roughness: 0.1, metalness: 0.2 }), 300);
+const debrisMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true }), 700);
+for (const m of [shardMesh, debrisMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
+debrisMesh.castShadow = true;
+for (let i = 0; i < 700; i++) debrisMesh.setColorAt(i, new THREE.Color(0xffffff));
+const shards = [], debris = [], rings = [];
+function emit(list, max, p, n, o) {
+  for (let i = 0; i < n; i++) {
+    if (list.length >= max) list.shift();
+    const life = o.life * (0.6 + rand() * 0.6);
+    list.push({
+      p: new V3(p.x + (rand() - 0.5) * o.jit, p.y + rand() * o.jit * 0.5, p.z + (rand() - 0.5) * o.jit),
+      v: new V3((rand() - 0.5) * o.spread, o.up * (0.4 + rand()), (rand() - 0.5) * o.spread),
+      r: new THREE.Euler(rand() * 6, rand() * 6, rand() * 6), rv: (rand() - 0.5) * 14, life, max: life,
+      s: o.size * (0.6 + rand() * 0.8), color: o.color ? new THREE.Color(o.color) : null,
+    });
+  }
+}
+function shockRing(P, color = 0xffffff, size = 2.6) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.75, 1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(P.x, heightAt(P.x, P.z) + 0.04, P.z); m.scale.setScalar(0.2); scene.add(m);
+  rings.push({ m, t: 0, size });
+}
+const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new V3(), _p = new V3(), _e = new THREE.Euler(0, 0, 0, 'YXZ');
+function stepParticles(list, mesh, dt, colored) {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const q = list[i]; q.life -= dt;
+    if (q.life <= 0) { list.splice(i, 1); continue; }
+    q.v.y -= 14 * dt; q.p.addScaledVector(q.v, dt);
+    const g = heightAt(q.p.x, q.p.z);
+    if (q.p.y < g) { q.p.y = g; q.v.y *= -0.3; q.v.x *= 0.55; q.v.z *= 0.55; q.rv *= 0.5; }
+    q.r.x += q.rv * dt; q.r.y += q.rv * 0.7 * dt;
+  }
+  list.forEach((q, i) => {
+    const k = q.s * Math.min(1, (q.life / q.max) * 2.2);
+    _q.setFromEuler(q.r); _s.set(k, k, k); _m4.compose(q.p, _q, _s); mesh.setMatrixAt(i, _m4);
+    if (colored) mesh.setColorAt(i, q.color);
+  });
+  mesh.count = list.length; mesh.instanceMatrix.needsUpdate = true;
+  if (colored && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
+// reticle shown on hover / tap
+const reticle = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.46, 36), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+reticle.rotation.x = -Math.PI / 2; reticle.renderOrder = 6; scene.add(reticle);
+let reticleFade = 0;
+
+// ================= sound =================
+let actx = null, muted = false, lastHatchSfx = 0;
+function ensureAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+function tone(freq, dur, type = 'sine', vol = 0.12, slide = 1, delay = 0) {
+  if (!actx || muted) return;
+  const t = actx.currentTime + delay; const o = actx.createOscillator(); const g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t); if (slide !== 1) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.03);
+}
+let noiseBuf = null;
+function noise(dur, vol, freq = 1200, type = 'highpass') {
+  if (!actx || muted) return;
+  if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = rand() * 2 - 1; }
+  const t = actx.currentTime; const src = actx.createBufferSource(); src.buffer = noiseBuf;
+  const f = actx.createBiquadFilter(); f.type = type; f.frequency.value = freq; const g = actx.createGain();
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  src.connect(f).connect(g).connect(actx.destination); src.start(t, rand() * 0.5); src.stop(t + dur + 0.03);
+}
+const SFX = {
+  launch() { tone(150, 0.28, 'triangle', 0.22, 0.45); noise(0.14, 0.1, 500, 'lowpass'); },
+  shatter() { noise(0.32, 0.2, 2600); tone(2100, 0.1, 'sine', 0.04, 1.5); tone(1500, 0.14, 'sine', 0.03, 1.3, 0.04); },
+  hatch() { const now = performance.now(); if (now - lastHatchSfx < 55) return; lastHatchSfx = now; tone(620 + rand() * 160, 0.08, 'sine', 0.06, 1.6); },
+  home() { tone(520, 0.12, 'sine', 0.09, 1.9); tone(980, 0.1, 'triangle', 0.05, 1.3, 0.06); noise(0.05, 0.05, 1800, 'bandpass'); },
+  lift() { tone(300, 0.12, 'triangle', 0.06, 1.6); noise(0.06, 0.04, 900, 'bandpass'); },
+  objective() { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.22, 'triangle', 0.1, 1, i * 0.08)); },
+  denied() { tone(190, 0.14, 'square', 0.05, 0.8); },
+  win() { [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.3, 'triangle', 0.1, 1, i * 0.1)); },
+  lose() { [392, 330, 262].forEach((f, i) => tone(f, 0.32, 'triangle', 0.1, 0.97, i * 0.16)); },
+};
+
+// ================= game state =================
+const G = { state: 'ready', time: CFG.time, colony: 1, hatched: 1, shots: 0, goalsTotal: 0, goalsLeft: 0, pendingHatch: 0, flyerCd: 0, shake: 0, freeT: 0 };
+// the optional free ant: one hatches every FREE_EVERY seconds of play while the toggle is on
+const FREE_EVERY = 15;
+const flyers = [], floaters = [];
+let clock = 0, round = 0;
+// objectives by name: most are one object, a stacked one is every piece of its stack
+let goals = [];
+
+function disposeGroup(g) { g.traverse((c) => { if (c.geometry) c.geometry.dispose(); }); }
+function resetGame(idx = levelIdx) {
+  levelIdx = clamp(idx | 0, 0, LEVELS.length - 1); saveLevel(); round++;
+  const L = LEVELS[levelIdx];
+  for (const o of objects) { if (o.alive) { levelGroup.remove(o.group); disposeGroup(o.group); } if (o.ring) { scene.remove(o.ring); o.ring.material.dispose(); } }
+  objects.length = 0; swarms = []; ants.length = 0;
+  while (balls.length) removeBall(balls[0]);
+  for (const r of rings) scene.remove(r.m); rings.length = 0;
+  for (const pf of puffs) { scene.remove(pf.m); pf.m.material.dispose(); } puffs.length = 0; aimYaw = 0;
+  shards.length = 0; debris.length = 0; flyers.length = 0; floaters.length = 0;
+  Object.assign(G, { state: 'ready', time: CFG.time, colony: CFG.startAnts, hatched: CFG.startAnts, shots: 0, pendingHatch: 0, flyerCd: 0, shake: 0, freeT: 0 });
+  applyWorld(L.world);
+  physicsReset(!!L.physics);
+  buildHoles(L.holes || []); homeT = 0;
+  buildLevel(L);
+  stepPhysics(0);
+  // the first-shot marker points at the one-ant snack nearest the front
+  G.firstAim = objects.filter((o) => o.need === 1).sort((a, b) => Math.hypot(a.x, a.z - 3) - Math.hypot(b.x, b.z - 3))[0] || null;
+  goals = [];
+  for (const o of objects) {
+    if (!o.objective) continue;
+    let g = goals.find((x) => x.name === o.objective);
+    if (!g) goals.push(g = { name: o.objective, pieces: [], done: false, el: null, needEl: null, shown: -1 });
+    g.pieces.push(o);
+  }
+  G.goalsTotal = G.goalsLeft = goals.length;
+  readyBall = spawnBall();
+  for (let i = 0; i < CFG.startAnts; i++) addAntToBall(readyBall, true);
+  $('levelChip').textContent = `LEVEL ${levelIdx + 1}`; $('hintMain').textContent = L.hint;
+  $('hint').hidden = false; $('result').hidden = true;
+  buildGoalsUI(); syncLevelPick(); hud.secs = -1; hud.count = -1;
+}
+
+// ================= input =================
+const raycaster = new THREE.Raycaster();
+const groundPlane = new THREE.Plane(new V3(0, 1, 0), 0);
+let hover = null, downAt = null;
+function groundPoint(e) {
+  const r = glCanvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const out = new V3(); if (!raycaster.ray.intersectPlane(groundPlane, out)) return null;
+  if (out.z > FIELD.z1 + 0.8) return null; // tapped the launcher area
+  out.x = clamp(out.x, FIELD.x0, FIELD.x1); out.z = clamp(out.z, FIELD.z0, FIELD.z1);
+  return out;
+}
+glCanvas.addEventListener('pointerdown', (e) => { ensureAudio(); downAt = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+glCanvas.addEventListener('pointerup', (e) => {
+  if (!downAt) return;
+  const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y); const held = performance.now() - downAt.t; downAt = null;
+  if (moved < 16 && held < 700) { const p = groundPoint(e); if (p) fire(p); }
+});
+glCanvas.addEventListener('pointermove', (e) => { hover = e.pointerType === 'mouse' ? groundPoint(e) : null; });
+glCanvas.addEventListener('pointerleave', () => { hover = null; });
+window.addEventListener('keydown', (e) => { if ((e.key === 'r' || e.key === 'R') && !e.target.closest('input')) resetGame(); });
+
+function fire(p) {
+  if (G.state === 'won' || G.state === 'lost') return;
+  const b = readyBall; if (!b || b.appear < 0.85) return;
+  if (b.ants.length === 0) { b.deny = 0.45; SFX.denied(); return; }
+  b.state = 'flying'; b.t = 0; b.from.copy(b.root.position);
+  b.to.set(p.x, heightAt(p.x, p.z) + BALL_R * BALL_SCALE * 0.55, p.z);
+  const d = b.from.distanceTo(b.to); b.dur = 0.55 + d * 0.028; b.arc = 1.6 + d * 0.2;
+  b.shadow.visible = true; b.root.scale.setScalar(BALL_SCALE);
+  readyBall = spawnBall(); launcherKick = 1; G.shots++;
+  aimYaw = aimAt(p); smoke(BALL_HOME);
+  reticle.position.set(p.x, heightAt(p.x, p.z) + 0.03, p.z); reticleFade = 1;
+  if (G.state === 'ready') { G.state = 'play'; $('hint').hidden = true; }
+  SFX.launch();
+}
+
+function impact(b) {
+  const P = b.root.position.clone(); b.root.updateMatrixWorld(true);
+  const s = newSwarm(P);
+  b.ants.forEach((a, i) => {
+    if (i < BALL_VISIBLE) a.p.copy(a.local).applyMatrix4(b.spin.matrixWorld);
+    else a.p.set(P.x + (rand() - 0.5) * BALL_R, P.y + (rand() - 0.5) * BALL_R, P.z + (rand() - 0.5) * BALL_R);
+    a.mode = 'fall'; a.ball = null; a.hidden = false;
+    const dx = a.p.x - P.x, dz = a.p.z - P.z; const l = Math.hypot(dx, dz) || 1; const sp = 0.8 + rand() * 2.4;
+    a.v.set(dx / l * sp + (rand() - 0.5), 1.5 + rand() * 2.5, dz / l * sp + (rand() - 0.5));
+    a.swarm = s; s.ants.push(a); randomDisc(a.off); a.spot.set(rand() * 2 - 1, rand() * 2 - 1);
+  });
+  b.ants.length = 0; removeBall(b);
+  emit(shards, 300, P, 26, { jit: BALL_R, spread: 7, up: 5, life: 1.0, size: 1 });
+  shockRing(P, 0xffffff, 3.2);
+  G.shake = Math.max(G.shake, 0.32);
+  SFX.shatter();
+  // the hit gives stacked food near it a small shove
+  if (PHYS.on) for (const o of objects) {
+    if (!o.alive || !o.body) continue;
+    const dx = o.x - P.x, dz = o.z - P.z, d = Math.hypot(dx, dz);
+    if (d > 1.6) continue;
+    const k = (1 - d / 1.6) * 0.5 * o.body.mass;
+    o.body.wakeUp(); o.body.applyImpulse(new CANNON.Vec3(dx / (d || 1) * k, k * 0.4, dz / (d || 1) * k));
+  }
+}
+
+// ================= simulation =================
+// food that reaches a hole goes down it: its carriers come back up into the cannon, with the new ants it hatches
+function deliver(s) {
+  const o = s.target, h = s.hole;
+  o.alive = false; levelGroup.remove(o.group); disposeGroup(o.group);
+  if (o.ring) { scene.remove(o.ring); o.ring.material.dispose(); o.ring = null; }
+  h.pop = 1; shockRing(new V3(h.x, 0, h.z), 0xf4b73a, 2.4); G.shake = Math.max(G.shake, 0.12);
+  emit(debris, 700, new V3(h.x, 0.15, h.z), 8, { jit: 0.4, spread: 3, up: 4, life: 0.8, size: 0.9, color: 0x9a6a3a });
+  goHome(s, G.state === 'won' || G.state === 'lost' ? 0 : o.gift);
+  // an objective is done when its last piece goes down (most are one piece; a stack is many)
+  const g = o.objective && goals.find((x) => x.name === o.objective);
+  if (g && !g.done && g.pieces.every((p) => !p.alive)) {
+    g.done = true; G.goalsLeft--; markGoal(g.name); SFX.objective(); shockRing(new V3(h.x, 0, h.z), 0xe2462f, 4.2); G.shake = Math.max(G.shake, 0.4);
+    const sp = toScreen(h.x, 0.2, h.z); floaters.push({ x: sp.x, y: sp.y - 70, text: `${g.name} carried off!`, t: 0, dur: 1.5, color: COL.signal, size: 22 });
+    if (G.goalsLeft <= 0) endGame(true);
+  }
+}
+// a swarm's ants go down a hole and fly back into the next ball, with any new ants hatched from what they brought
+function goHome(s, gift) {
+  const h = s.hole, k = s.ants.length;
+  removeAnts(s.ants); s.ants.length = 0;
+  if (gift) { G.colony += gift; G.hatched += gift; colonyPop(); }
+  const p = toScreen(h.x, 0.2, h.z);
+  flyers.push({ t: 0, dur: 0.55, k: k + gift, x0: p.x, y0: p.y });
+  if (gift) floaters.push({ x: p.x, y: p.y - 26, text: `+${gift}`, t: 0, dur: 1, color: COL.honey, size: 22 });
+  SFX.home();
+}
+// take ants off the field, keeping the rest in order
+function removeAnts(list) {
+  const gone = new Set(list); let j = 0;
+  for (const a of ants) if (!gone.has(a)) ants[j++] = a;
+  ants.length = j;
+}
+
+function updateObjects(dt) {
+  for (const o of objects) {
+    if (!o.alive) continue;
+    // a quick bump as the ants lift it
+    if (o.pop > 0) {
+      o.pop = Math.max(0, o.pop - dt * 3.2); const b = Math.sin((1 - o.pop) * Math.PI) * 0.12, k = FOOD_SCALE;
+      o.group.scale.set(k * (1 + b * 0.6), k * (1 + b), k * (1 + b * 0.6));
+    }
+    if (o.ring) {
+      o.ring.material.opacity = 0.5 + 0.35 * Math.sin(clock * 4);
+      // a stacked or carried objective shows its ring under whichever of its pieces are on the ground
+      if (o.body || o.carried) { o.ring.visible = o.carried || o.y0 < 0.1; o.ring.position.set(o.x, 0.02, o.z); o.ring.userData.base = Math.max(o.hx, o.hz) + 0.4; }
+      o.ring.scale.setScalar(o.ring.userData.base);
+    }
+    if (o.flag) o.flag.rotation.y = Math.sin(clock * 3 + o.x) * 0.3;
+    if (o.spin) o.spin.rotation.y = o.kind === 'radar' ? clock * 0.9 : Math.sin(clock * 0.5) * 0.6;
+    if (o.anim) o.anim(clock);
+  }
+}
+
+// carried food rides this far off the ground, on its carriers' backs
+const LIFT = 0.16;
+function groundUnder(o) {
+  let g = 0;
+  for (const [u, v] of [[0, 0], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]]) g = Math.max(g, heightAt(o.x + u * o.hx, o.z + v * o.hz));
+  return g;
+}
+// the carriers are in place (or have waited long enough): up it comes, and off to the nearest hole
+function liftOff(s) {
+  const o = s.target;
+  o.carried = true; o.pop = 1; removeBody(o); homeT = 0; // the way home opens up where it stood
+  o.off = o.group.position.clone().sub(_p.set(o.x, o.y0, o.z)); o.carryH = o.topY - o.y0;
+  s.hole = nearestHole(o.x, o.z); s.state = 'carry';
+  SFX.lift();
+}
+function walkTo(s, x, z, step) {
+  const dx = x - s.lead.x, dz = z - s.lead.z, d = Math.hypot(dx, dz);
+  if (d > 0.001) { const k = Math.min(d, step) / d; s.lead.x += dx * k; s.lead.z += dz * k; }
+  return d;
+}
+function updateSwarms(dt, live) {
+  for (const s of swarms) {
+    const n = s.ants.length; if (!n) continue;
+    s.r = 0.22 + 0.12 * Math.sqrt(n);
+    let cx = 0, cy = 0, cz = 0;
+    for (const a of s.ants) { cx += a.p.x; cy += a.p.y; cz += a.p.z; }
+    s.c.set(cx / n, cy / n, cz / n);
+    s.pulse = Math.max(0, s.pulse - dt * 3);
+    const step = CFG.antSpeed * 0.85 * dt;
+    // food that something has just landed on is let go, as long as it hasn't been lifted yet
+    if (s.target && (s.state === 'move' || s.state === 'grab') && !canLift(s.target)) dropTarget(s);
+    if (!s.target && s.state !== 'home') {
+      // send ants to everything this swarm can lift, one piece at a time, quickly while there is more to send
+      s.think -= dt;
+      if (live && s.think <= 0) { s.think = 0.3; const o = pickTarget(s); if (o && dispatch(s, o) !== s) s.think = 0.05; }
+      if (s.target) { s.idle = false; s.idleT = 0; continue; }
+      // nothing it can lift nearby: join a swarm it can see that has nothing to do either, or wait a moment and head home
+      s.idle = true; s.idleT += dt;
+      let best = null, bd = senseRange(s) * 1.4;
+      for (const q of swarms) {
+        if (q === s || !q.ants.length || q.target || q.state === 'home') continue;
+        const d = Math.hypot(q.c.x - s.c.x, q.c.z - s.c.z); if (d < bd) { bd = d; best = q; }
+      }
+      if (best) walkTo(s, best.c.x, best.c.z, step);
+      else if (s.idleT >= CFG.homeWait && holes.length) { s.state = 'home'; s.idle = false; s.hole = nearestHole(s.c.x, s.c.z); }
+      continue;
+    }
+    s.idle = false;
+    const o = s.target;
+    if (s.state === 'home') {
+      if (walkTo(s, s.hole.x, s.hole.z, step) < 0.15) goHome(s, 0);
+    } else if (s.state === 'move') {
+      // stack pieces can drift as they settle; the swarm heads for wherever its food is now
+      if (walkTo(s, o.x, o.z, step) < Math.max(o.hx, o.hz) * 0.7 + 0.25) { s.state = 'grab'; s.t = 0; }
+    } else if (s.state === 'grab') {
+      // the ants take their places round it, then lift together
+      s.lead.set(o.x, 0, o.z); s.t += dt;
+      let ready = 0; for (const a of s.ants) if (a.atSpot) ready++;
+      if (live && (ready >= Math.ceil(n * 0.8) || s.t > 1.6)) liftOff(s);
+    } else if (s.state === 'carry') {
+      // small food follows the way home round anything tall; big food is wider than any gap, so its swarm hauls it
+      // straight home over whatever is in the way. Both make straight for the hole once close.
+      const h = nearestHole(o.x, o.z), dh = Math.hypot(h.x - o.x, h.z - o.z), aim = dh < 1 || Math.max(o.hx, o.hz) > 0.9 ? -1 : homeAim(o.x, o.z);
+      const dx = (aim < 0 ? h.x : cellX(aim)) - o.x, dz = (aim < 0 ? h.z : cellZ(aim)) - o.z, d = Math.hypot(dx, dz);
+      if (d > 0.001) { const k = Math.min(d, CFG.carrySpeed * dt) / d; o.x += dx * k; o.z += dz * k; }
+      // and rides over anything low
+      o.y0 += (groundUnder(o) + LIFT - o.y0) * Math.min(1, dt * 8); o.topY = o.y0 + o.carryH;
+      o.group.position.set(o.x + o.off.x, o.y0 + o.off.y + Math.sin(clock * 16 + s.id) * 0.015, o.z + o.off.z);
+      s.lead.set(o.x, 0, o.z);
+      if (dh < 0.12) { s.hole = h; s.state = 'sink'; s.t = 0; }
+    } else if (s.state === 'sink') {
+      // down the hole it goes
+      s.t = Math.min(1, s.t + dt / 0.5); const e = s.t * s.t;
+      o.group.scale.setScalar(FOOD_SCALE * (1 - e * 0.8));
+      o.group.position.y = o.y0 + o.off.y - e * (o.carryH + 0.3);
+      if (s.t >= 1) deliver(s);
+    }
+  }
+  // only swarms with nothing to do merge; a swarm on its way to food keeps exactly the ants it needs
+  for (let i = 0; i < swarms.length; i++) for (let j = i + 1; j < swarms.length; j++) {
+    const a = swarms[i], b = swarms[j]; if (!a.ants.length || !b.ants.length || !a.idle || !b.idle) continue;
+    if (Math.hypot(a.c.x - b.c.x, a.c.z - b.c.z) < a.r + b.r + 0.2) mergeSwarms(a, b);
+  }
+  swarms = swarms.filter((s) => s.ants.length);
+}
+
+// ants never die: they carry food home, or walk home when there is nothing near them they can lift
+function updateAnts(dt) {
+  for (const a of ants) {
+    if (a.mode === 'ball') continue;
+    if (a.mode === 'fall') {
+      a.v.y -= 16 * dt; a.p.addScaledVector(a.v, dt); a.yaw += dt * 9; a.pitch += dt * 7;
+      const g = heightAt(a.p.x, a.p.z); if (a.p.y <= g && a.v.y < 0) { a.p.y = g; a.mode = 'field'; a.pitch = 0; }
+      continue;
+    }
+    const s = a.swarm, o = s.target, holding = !!o && (s.state === 'grab' || s.state === 'carry');
+    let tx, tz;
+    if (s.state === 'sink') { tx = s.hole.x; tz = s.hole.z; }
+    else if (holding) {
+      // carriers spread round the food's edge, each at its own angle
+      if (o.round) { const R = Math.max(o.hx, o.hz) + 0.08; tx = o.x + Math.cos(a.ang) * R; tz = o.z + Math.sin(a.ang) * R; }
+      else [tx, tz] = sidePoint(o, a.ang);
+    } else { tx = s.lead.x + a.off.x * s.r; tz = s.lead.z + a.off.y * s.r; }
+    const dx = tx - a.p.x, dz = tz - a.p.z, d = Math.hypot(dx, dz);
+    a.atSpot = d < 0.32;
+    const moving = d > 0.08;
+    if (d > 0.02) { const st = Math.min(d, CFG.antSpeed * a.spd * dt); a.p.x += dx / d * st; a.p.z += dz / d * st; }
+    if (moving) a.yaw = lerpAngle(a.yaw, Math.atan2(dx, dz), Math.min(1, dt * 12));
+    else if (holding) a.yaw = lerpAngle(a.yaw, Math.atan2(o.x - a.p.x, o.z - a.p.z), Math.min(1, dt * 8));
+    else a.yaw += Math.sin(a.ph * 0.6) * dt * 1.6;
+    a.ph += dt * (moving ? 24 : 10);
+    // carriers hold the food at its base wherever that is, so a piece taken off the top of a stack comes down with them
+    const gy = holding && a.atSpot ? Math.max(0, o.y0 - (o.carried ? LIFT : 0)) : heightAt(a.p.x, a.p.z);
+    a.p.y += (gy - a.p.y) * Math.min(1, dt * 14);
+    // ants reaching a hole go down it
+    if ((s.state === 'sink' || s.state === 'home') && Math.hypot(s.hole.x - a.p.x, s.hole.z - a.p.z) < HOLE_R * 0.8) a.hidden = true;
+    a.pitch = holding && !moving ? -0.12 : 0;
+    a.roll = moving ? Math.sin(a.ph) * 0.14 : 0;
+  }
+}
+
+let launcherKick = 0;
+// the cannon faces -z; this turns it toward a point on the island, within a comfortable swing
+const aimAt = (p) => clamp(Math.atan2(-(p.x - BALL_HOME.x), -(p.z - BALL_HOME.z)), -0.6, 0.6);
+function updateBalls(dt) {
+  for (const b of [...balls]) {
+    if (b.state === 'ready') {
+      b.appear = Math.min(1, b.appear + dt * 4);
+      const e = b.appear < 1 ? 1 + Math.sin(b.appear * Math.PI) * 0.18 : 1;
+      b.root.scale.setScalar(Math.max(0.01, b.appear * e) * BALL_SCALE);
+      b.deny = Math.max(0, b.deny - dt);
+      b.root.position.set(BALL_HOME.x + Math.sin(b.deny * 50) * b.deny * 0.25, BALL_HOME.y + Math.sin(clock * 2.2) * 0.04, BALL_HOME.z);
+      b.spin.rotation.y += dt * 0.25;
+    } else {
+      b.t += dt / b.dur; const t = Math.min(1, b.t);
+      b.root.position.lerpVectors(b.from, b.to, t); b.root.position.y += 4 * b.arc * t * (1 - t);
+      b.spin.rotation.x -= dt * 7; b.spin.rotation.z += dt * 2.2;
+      const gp = b.root.position; b.shadow.position.set(gp.x, heightAt(gp.x, gp.z) + 0.03, gp.z);
+      b.shadow.scale.setScalar((0.6 + 0.4 * (1 - Math.min(1, (gp.y - b.to.y) / 6))) * BALL_SCALE);
+      if (b.t >= 1) { impact(b); continue; }
+    }
+    b.ants.forEach((a, i) => {
+      a.hidden = i >= BALL_VISIBLE; if (a.hidden) return;
+      a.wT -= dt; if (a.wT <= 0) { ballSpot(a.rest, b.ants.length); a.wT = 1.2 + rand() * 2.5; }
+      const dx = a.rest.x - a.local.x, dz = a.rest.z - a.local.z, d = Math.hypot(dx, dz);
+      if (d > 0.01) { const st = Math.min(d, 0.3 * dt); a.local.x += dx / d * st; a.local.z += dz / d * st; a.yaw = lerpAngle(a.yaw, Math.atan2(dx, dz), Math.min(1, dt * 8)); }
+      a.local.y += (a.rest.y - a.local.y) * Math.min(1, dt * 7);
+    });
+  }
+  launcherKick = Math.max(0, launcherKick - dt * 4);
+  // the cannon kicks back toward the camera, then rolls forward again, and turns to face the aim
+  const kick = launcherKick * launcherKick;
+  cannon.position.set(0, -kick * 0.12, -GUN.ballZ + kick * 0.55);
+  if (hover && (G.state === 'ready' || G.state === 'play')) aimYaw = aimAt(hover);
+  launcher.rotation.y += (aimYaw - launcher.rotation.y) * Math.min(1, dt * 10);
+}
+
+function renderAnts() {
+  let n = 0;
+  for (const a of ants) {
+    if (a.hidden) continue;
+    if (a.mode === 'ball') {
+      _e.set(0, a.yaw, 0); _q.setFromEuler(_e); _s.setScalar(BALL_ANT_SCALE);
+      _m4.compose(a.local, _q, _s); _m4.premultiply(a.ball.spin.matrixWorld);
+    } else {
+      _e.set(a.pitch, a.yaw, a.roll); _q.setFromEuler(_e); _s.set(1, 1, 1); _m4.compose(a.p, _q, _s);
+    }
+    antMesh.setMatrixAt(n, _m4); antMesh.setColorAt(n, a.color); n++;
+  }
+  antMesh.count = n; antMesh.instanceMatrix.needsUpdate = true; if (antMesh.instanceColor) antMesh.instanceColor.needsUpdate = true;
+}
+
+function update3DFx(dt) {
+  updatePuffs(dt);
+  // a hole bulges as food goes down it
+  for (const h of holes) { h.pop = Math.max(0, h.pop - dt * 3); const b = Math.sin(h.pop * Math.PI) * 0.18; h.g.scale.set(1 + b, 1 + b * 2, 1 + b); }
+  stepParticles(shards, shardMesh, dt, false);
+  stepParticles(debris, debrisMesh, dt, true);
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const r = rings[i]; r.t += dt / 0.45;
+    if (r.t >= 1) { scene.remove(r.m); r.m.geometry.dispose(); r.m.material.dispose(); rings.splice(i, 1); continue; }
+    r.m.scale.setScalar(0.2 + r.size * (1 - Math.pow(1 - r.t, 3))); r.m.material.opacity = 0.8 * (1 - r.t);
+  }
+  if (hover && readyBall && (G.state === 'ready' || G.state === 'play')) {
+    reticle.position.set(hover.x, heightAt(hover.x, hover.z) + 0.03, hover.z); reticle.material.opacity = 0.85;
+    reticle.scale.setScalar(1 + Math.sin(clock * 6) * 0.06);
+  } else {
+    reticleFade = Math.max(0, reticleFade - dt * 2.2); reticle.material.opacity = reticleFade * 0.9; reticle.scale.setScalar(1 + (1 - reticleFade) * 0.8);
+  }
+}
+
+function updateCamera() {
+  const k = REDUCED_MOTION ? 0 : G.shake * G.shake;
+  camera.position.set(CAM_POS.x + (rand() - 0.5) * k * 1.2, CAM_POS.y + (rand() - 0.5) * k * 1.2, CAM_POS.z + (rand() - 0.5) * k * 0.8);
+  camera.lookAt(CAM_LOOK);
+}
+
+// ================= colony feed (2D overlay) =================
+let viewW = 1, viewH = 1, dpr = 1, colonyPos = { x: 60, y: 600 };
+const _pv = new V3();
+function toScreen(x, y, z) { _pv.set(x, y, z).project(camera); return { x: (_pv.x + 1) / 2 * viewW, y: (1 - _pv.y) / 2 * viewH, ok: _pv.z < 1 }; }
+// new ants from the colony itself (the free ant) fly into the next ball from the colony dial
+function hatchEggs(n) {
+  if (G.state === 'won' || G.state === 'lost') return;
+  G.colony += n; G.hatched += n; G.pendingHatch += n;
+}
+function updateFeed(dt) {
+  G.flyerCd -= dt;
+  if (G.pendingHatch > 0 && G.flyerCd <= 0) {
+    flyers.push({ t: 0, dur: 0.5, k: G.pendingHatch, x0: colonyPos.x, y0: colonyPos.y - 6 });
+    // one "+N" tag above the colony that keeps counting while hatches arrive close together
+    const tag = G.hatchTag && floaters.includes(G.hatchTag) && G.hatchTag.t < 0.6 ? G.hatchTag : null;
+    if (tag) { tag.n += G.pendingHatch; tag.text = `+${tag.n}`; tag.t = 0.15; }
+    else { G.hatchTag = { x: colonyPos.x + 26, y: colonyPos.y - 48, n: G.pendingHatch, text: `+${G.pendingHatch}`, t: 0, dur: 0.9, color: COL.honey, size: 20 }; floaters.push(G.hatchTag); }
+    G.pendingHatch = 0; G.flyerCd = 0.08; colonyPop();
+  }
+  for (let i = flyers.length - 1; i >= 0; i--) {
+    const f = flyers[i]; f.t += dt / f.dur;
+    if (f.t >= 1) { flyers.splice(i, 1); if (readyBall) { for (let k = 0; k < f.k; k++) addAntToBall(readyBall, false); } SFX.hatch(); }
+  }
+  for (let i = floaters.length - 1; i >= 0; i--) { const f = floaters[i]; f.t += dt / f.dur; if (f.t >= 1) floaters.splice(i, 1); }
+}
+const colonyEl = $('colony');
+function colonyPop() { colonyEl.classList.remove('pop'); void colonyEl.offsetWidth; colonyEl.classList.add('pop'); }
+
+// ================= overlay drawing =================
+function roundRect(x, y, w, h, r) {
+  fx.beginPath(); fx.moveTo(x + r, y); fx.arcTo(x + w, y, x + w, y + h, r); fx.arcTo(x + w, y + h, x, y + h, r);
+  fx.arcTo(x, y + h, x, y, r); fx.arcTo(x, y, x + w, y, r); fx.closePath();
+}
+function antIcon(x, y, s, color) {
+  fx.save(); fx.translate(x, y); fx.fillStyle = color; fx.strokeStyle = color; fx.lineWidth = Math.max(1.1, s * 0.09); fx.lineCap = 'round';
+  fx.beginPath();
+  for (const k of [-1, 0, 1]) { const bx = k * 0.13 * s; fx.moveTo(bx, 0); fx.lineTo(bx + k * 0.12 * s - 0.02 * s, -0.36 * s); fx.moveTo(bx, 0); fx.lineTo(bx + k * 0.12 * s - 0.02 * s, 0.36 * s); }
+  fx.moveTo(0.3 * s, -0.04 * s); fx.lineTo(0.48 * s, -0.24 * s); fx.moveTo(0.3 * s, 0.04 * s); fx.lineTo(0.48 * s, 0.24 * s);
+  fx.stroke();
+  fx.beginPath(); fx.ellipse(-0.27 * s, 0, 0.23 * s, 0.17 * s, 0, 0, TAU); fx.fill();
+  fx.beginPath(); fx.ellipse(0.0, 0, 0.11 * s, 0.09 * s, 0, 0, TAU); fx.fill();
+  fx.beginPath(); fx.arc(0.23 * s, 0, 0.12 * s, 0, TAU); fx.fill();
+  fx.restore();
+}
+function countPill(cx, cy, label, n, o) {
+  const size = o.size || 13; fx.font = `${size}px ${DISPLAY}`;
+  const txt = String(n); const tw = fx.measureText(txt).width; const lw = label ? fx.measureText(label).width + 6 : 0;
+  const iw = size * 1.15; const h = size + 9; const w = lw + iw + tw + 15; const x = cx - w / 2, y = cy - h / 2;
+  fx.globalAlpha = o.alpha ?? 1;
+  roundRect(x, y + 2, w, h, h / 2); fx.fillStyle = 'rgba(0,0,0,0.22)'; fx.fill();
+  roundRect(x, y, w, h, h / 2); fx.fillStyle = o.bg; fx.fill();
+  if (o.ring) { fx.lineWidth = 2; fx.strokeStyle = o.ring; fx.stroke(); }
+  fx.textBaseline = 'middle'; fx.fillStyle = o.fg;
+  if (label) fx.fillText(label, x + 8, cy + 1);
+  antIcon(x + 8 + lw + iw / 2, cy, size * 0.95, o.fg);
+  fx.fillText(txt, x + 9 + lw + iw, cy + 1);
+  fx.globalAlpha = 1;
+}
+function textPill(cx, cy, text, bg, fg, size = 13) {
+  fx.font = `${size}px ${DISPLAY}`; const w = fx.measureText(text).width + 18, h = size + 9;
+  roundRect(cx - w / 2, cy - h / 2, w, h, h / 2); fx.fillStyle = bg; fx.fill();
+  fx.fillStyle = fg; fx.textBaseline = 'middle'; fx.textAlign = 'center'; fx.fillText(text, cx, cy + 1); fx.textAlign = 'left';
+}
+
+function drawOverlay() {
+  fx.setTransform(dpr, 0, 0, dpr, 0, 0); fx.clearRect(0, 0, viewW, viewH);
+  const live = G.state === 'ready' || G.state === 'play';
+
+  // aim preview on desktop hover
+  if (hover && readyBall && live && readyBall.ants.length) {
+    const d = BALL_HOME.distanceTo(hover); const arc = 1.6 + d * 0.2;
+    for (let i = 2; i < 22; i++) {
+      const t = i / 22; const y = BALL_HOME.y + (BALL_R * BALL_SCALE * 0.55 - BALL_HOME.y) * t + 4 * arc * t * (1 - t);
+      const p = toScreen(BALL_HOME.x + (hover.x - BALL_HOME.x) * t, y, BALL_HOME.z + (hover.z - BALL_HOME.z) * t);
+      fx.beginPath(); fx.arc(p.x, p.y, 3.2, 0, TAU); fx.fillStyle = `rgba(255,255,255,${0.9 - t * 0.4})`; fx.fill();
+      fx.lineWidth = 1; fx.strokeStyle = 'rgba(31,39,22,0.35)'; fx.stroke();
+    }
+  }
+
+  // first-shot tap marker
+  if (G.state === 'ready') {
+    const f = G.firstAim, p = f ? toScreen(f.x, f.topY, f.z) : toScreen(0, 0, 2); const k = (clock * 1.2) % 1;
+    fx.beginPath(); fx.arc(p.x, p.y, 10 + k * 26, 0, TAU); fx.lineWidth = 3; fx.strokeStyle = `rgba(255,248,230,${1 - k})`; fx.stroke();
+    fx.beginPath(); fx.arc(p.x, p.y, 7, 0, TAU); fx.fillStyle = COL.cream; fx.fill();
+  }
+
+  // how many ants each piece of food takes to lift, once it takes three or more: green when the next ball has enough.
+  // Food a swarm is already going for shows that swarm's count instead.
+  const reach = readyBall ? readyBall.ants.length : 0;
+  const gateAt = (o) => toScreen(o.x, o.topY + (o.objective ? 0.8 + Math.sin(clock * 3 + o.x) * 0.1 : 0.35), o.z);
+  for (const o of objects) {
+    if (!canLift(o) || o.claim || o.objective || o.need < 3) continue;
+    const p = gateAt(o);
+    countPill(p.x, p.y, '', o.need, { bg: reach >= o.need ? COL.leaf : COL.ink70, fg: COL.cream, size: 11, alpha: 0.95 });
+  }
+
+  // swarm sizes: a swarm holding food shows its count in front of it
+  for (const s of swarms) {
+    const o = s.target, held = o && (s.state === 'grab' || s.state === 'carry');
+    if (s.state === 'sink') continue;
+    const p = held ? toScreen(o.x, Math.max(0, o.y0 - LIFT), o.z + o.hz + 0.6) : toScreen(s.c.x, s.c.y + 0.6 + s.r * 0.3, s.c.z);
+    const size = (s.idle ? 12 : 13) + s.pulse * 5;
+    if (s.idle || s.state === 'home') countPill(p.x, p.y, '', s.ants.length, { bg: '#dcd6c3', fg: 'rgba(31,39,22,0.62)', size, ring: 'rgba(31,39,22,0.35)' });
+    else countPill(p.x, p.y, '', s.ants.length, { bg: COL.cream, fg: COL.ink, size, ring: COL.ink });
+  }
+
+  // objectives say their name, over everything else; the rim pulses when the next ball can lift them
+  for (const o of objects) {
+    if (!canLift(o) || o.claim || !o.objective) continue;
+    const p = gateAt(o);
+    countPill(p.x, p.y, o.objective.toUpperCase(), o.need, { bg: COL.signal, fg: COL.cream, size: 13, ring: reach >= o.need ? `rgba(255,248,230,${0.6 + 0.4 * Math.sin(clock * 8)})` : null });
+  }
+
+  // next ball count
+  if (readyBall && readyBall.appear > 0.3) {
+    const c = toScreen(BALL_HOME.x, BALL_HOME.y, BALL_HOME.z), e = toScreen(BALL_HOME.x + BALL_R * BALL_SCALE, BALL_HOME.y, BALL_HOME.z);
+    const x = e.x + 44, y = c.y; const n = readyBall.ants.length;
+    const coming = flyers.length || G.pendingHatch;
+    const wait = coming ? 'Ants coming home…' : swarms.length ? 'Ants out carrying' : CFG.freeAnt && live ? `Free ant in ${Math.ceil(FREE_EVERY - G.freeT)}s` : 'No ants left';
+    if (n > 0) countPill(x, y, '', n, { bg: COL.honey, fg: COL.ink, size: 20 });
+    else textPill(x + 12, y, wait, readyBall.deny > 0 ? COL.signal : COL.ink70, COL.cream, 14);
+  }
+
+  // ants flying into the next ball: home from a hole, or new from the colony
+  if (readyBall) {
+    const tgt = toScreen(BALL_HOME.x, BALL_HOME.y + 0.1, BALL_HOME.z);
+    for (const f of flyers) {
+      const t = 1 - Math.pow(1 - f.t, 2); const x = f.x0 + (tgt.x - f.x0) * t, y = f.y0 + (tgt.y - f.y0) * t - Math.sin(t * Math.PI) * 60;
+      fx.beginPath(); fx.arc(x, y, 12, 0, TAU); fx.fillStyle = COL.cream; fx.fill(); fx.lineWidth = 2; fx.strokeStyle = COL.honey; fx.stroke();
+      antIcon(x, y, 17, COL.ink);
+      if (f.k > 1) { fx.font = `12px ${DISPLAY}`; fx.fillStyle = COL.ink; fx.textBaseline = 'middle'; fx.fillText(`×${f.k}`, x + 14, y - 10); }
+    }
+  }
+
+  for (const f of floaters) {
+    const a = f.t < 0.7 ? 1 : 1 - (f.t - 0.7) / 0.3;
+    fx.globalAlpha = a; fx.font = `${f.size}px ${DISPLAY}`; fx.textAlign = 'center'; fx.textBaseline = 'middle';
+    fx.lineWidth = 4; fx.strokeStyle = 'rgba(31,39,22,0.85)'; const y = f.y - f.t * 36;
+    fx.strokeText(f.text, f.x, y); fx.fillStyle = f.color; fx.fillText(f.text, f.x, y);
+    fx.textAlign = 'left'; fx.globalAlpha = 1;
+  }
+}
+
+// ================= HUD =================
+const hud = { secs: -1, count: -1, ring: -1 };
+const timerEl = $('timer'), colonyCountEl = $('colonyCount'), colonyRingEl = $('colonyRing');
+const RING_LEN = 2 * Math.PI * 31;
+const ANT_SVG = '<svg viewBox="0 0 32 32" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M13 16l-4-6M13 16l-4 6M16 16l0-7M16 16l0 7M19 16l4-6M19 16l4 6M22.5 14l3-5M22.5 18l3 5" fill="none"/><ellipse cx="9" cy="16" rx="5" ry="3.8" stroke="none"/><ellipse cx="16" cy="16" rx="2.8" ry="2.4" stroke="none"/><circle cx="22" cy="16" r="2.9" stroke="none"/></svg>';
+function buildGoalsUI() {
+  const wrap = $('goals'); wrap.innerHTML = '';
+  for (const g of goals) {
+    const el = document.createElement('div'); el.className = 'goal'; el.dataset.goal = g.name;
+    el.innerHTML = `<span class="tgt"></span><span class="name">${g.name}</span><span class="need">${ANT_SVG}<b></b></span>`;
+    g.el = el; g.needEl = el.querySelector('.need b'); g.shown = -1;
+    wrap.appendChild(el);
+  }
+}
+function markGoal(name) { const el = document.querySelector(`.goal[data-goal="${name}"]`); if (el) el.classList.add('done'); }
+function updateHUD() {
+  const secs = Math.ceil(G.time);
+  if (secs !== hud.secs) { hud.secs = secs; timerEl.textContent = fmtTime(secs); }
+  timerEl.classList.toggle('low', G.state === 'play' && G.time <= 10);
+  timerEl.classList.toggle('idle', G.state === 'ready');
+  if (G.colony !== hud.count) { hud.count = G.colony; colonyCountEl.textContent = G.colony; }
+  colonyEl.classList.toggle('trickle', !!CFG.freeAnt);
+  const prog = CFG.freeAnt ? clamp(G.freeT / FREE_EVERY, 0, 1) : 0;
+  if (Math.abs(prog - hud.ring) > 0.004) { hud.ring = prog; colonyRingEl.setAttribute('stroke-dashoffset', (RING_LEN * (1 - prog)).toFixed(1)); }
+  // each objective's chip shows how many ants it takes to lift it now (a stack: its biggest piece free to lift),
+  // and turns green once the next ball has that many
+  const ballN = readyBall ? readyBall.ants.length : 0;
+  for (const g of goals) {
+    if (g.done || !g.needEl) continue;
+    let need = 0; for (const p of g.pieces) if (canLift(p)) need = Math.max(need, p.need);
+    if (need && need !== g.shown) { g.shown = need; g.needEl.textContent = need; }
+    g.el.classList.toggle('can', g.shown > 0 && ballN >= g.shown);
+  }
+}
+
+function endGame(won, reason) {
+  if (G.state === 'won' || G.state === 'lost') return;
+  G.state = won ? 'won' : 'lost';
+  won ? SFX.win() : SFX.lose();
+  const r = round, L = LEVELS[levelIdx];
+  setTimeout(() => {
+    if (r !== round) return; // restarted before the card came up
+    const card = $('resultCard'); card.className = 'result-card ' + (won ? 'win' : 'lose');
+    $('resultTitle').textContent = won ? L.win : 'Out of time';
+    $('resultSub').textContent = won ? 'Every objective carried home' : `${G.goalsLeft} objective${G.goalsLeft === 1 ? '' : 's'} still standing`;
+    $('rsTime').textContent = fmtTime(Math.ceil(G.time));
+    $('rsGoals').textContent = `${G.goalsTotal - G.goalsLeft} / ${G.goalsTotal}`;
+    $('rsColony').textContent = G.hatched;
+    $('rsShots').textContent = G.shots;
+    const next = $('nextBtn'), again = $('againBtn');
+    next.hidden = !won; next.textContent = levelIdx + 1 < LEVELS.length ? 'Next level' : 'Back to level 1';
+    again.textContent = won ? 'Replay' : 'Try again'; again.classList.toggle('primary', !won);
+    $('result').hidden = false; (won ? next : again).focus({ preventScroll: true });
+  }, won ? 1100 : 700);
+}
+$('againBtn').addEventListener('click', () => { ensureAudio(); resetGame(); });
+$('nextBtn').addEventListener('click', () => { ensureAudio(); resetGame((levelIdx + 1) % LEVELS.length); });
+
+// ================= tuning panel =================
+const TUNE = [
+  ['time', 't-time', 'o-time', (v) => fmtTime(v)],
+  ['carrySpeed', 't-carry', 'o-carry', (v) => v.toFixed(1) + ' m/s'],
+  ['giftScale', 't-gift', 'o-gift', (v) => '×' + v.toFixed(2)],
+  ['needScale', 't-need', 'o-need', (v) => '×' + v.toFixed(1)],
+  ['antSpeed', 't-speed', 'o-speed', (v) => v.toFixed(1)],
+  ['sense', 't-sense', 'o-sense', (v) => v.toFixed(1) + ' m'],
+  ['homeWait', 't-home', 'o-home', (v) => v.toFixed(1) + ' s'],
+  ['startAnts', 't-start', 'o-start', (v) => String(v)],
+];
+function syncTuning() { for (const [k, id, out, f] of TUNE) { $(id).value = CFG[k]; $(out).textContent = f(CFG[k]); } $('t-free').checked = !!CFG.freeAnt; }
+for (const [k, id, out, f] of TUNE) {
+  $(id).addEventListener('input', (e) => { CFG[k] = parseFloat(e.target.value); $(out).textContent = f(CFG[k]); saveCfg(); });
+}
+// the free ant switches on and off live; its clock keeps whatever it had counted
+$('t-free').addEventListener('change', (e) => { CFG.freeAnt = e.target.checked; saveCfg(); });
+syncTuning();
+const tuningEl = $('tuning');
+// on phones the sheet covers the game, so the game pauses while it is open
+let paused = false;
+const setSheet = (open) => { tuningEl.classList.toggle('open', open); paused = open; };
+$('tuneBtn').addEventListener('click', () => setSheet(true));
+$('tuneClose').addEventListener('click', () => setSheet(false));
+$('tuneApply').addEventListener('click', () => { setSheet(false); resetGame(); });
+$('tuneReset').addEventListener('click', () => { Object.assign(CFG, DEFAULTS); saveCfg(); syncTuning(); });
+const levelPick = $('levelPick');
+LEVELS.forEach((L, i) => {
+  const b = document.createElement('button'); b.type = 'button'; b.dataset.level = i; b.textContent = `${i + 1} · ${L.name}`;
+  b.addEventListener('click', () => { ensureAudio(); setSheet(false); resetGame(i); });
+  levelPick.appendChild(b);
+});
+function syncLevelPick() { for (const b of levelPick.children) b.setAttribute('aria-pressed', String(Number(b.dataset.level) === levelIdx)); }
+$('soundBtn').addEventListener('click', (e) => {
+  muted = !muted; e.currentTarget.setAttribute('aria-pressed', String(muted));
+  e.currentTarget.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+  $('soundWaves').style.opacity = muted ? 0.15 : 1;
+});
+
+// ================= sizing =================
+function resize() {
+  const w = gameEl.clientWidth, h = gameEl.clientHeight; if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  const dist = CAM_POS.distanceTo(CAM_LOOK);
+  const hf = Math.atan(VIEW_HALF_W / dist);
+  camera.fov = THREE.MathUtils.radToDeg(clamp(2 * Math.atan(Math.tan(hf) / camera.aspect), 0.6, 1.3));
+  camera.updateProjectionMatrix();
+  dpr = Math.min(window.devicePixelRatio || 1, 2); viewW = w; viewH = h;
+  fxCanvas.width = Math.round(w * dpr); fxCanvas.height = Math.round(h * dpr);
+  const r = document.querySelector('.colony-dial').getBoundingClientRect(), g = gameEl.getBoundingClientRect();
+  colonyPos = { x: r.left - g.left + r.width / 2, y: r.top - g.top + r.height / 2 };
+}
+new ResizeObserver(resize).observe(gameEl);
+resize();
+
+// ================= loop =================
+function step(dt) {
+  clock += dt;
+  if (G.state === 'play') { G.time -= dt; if (G.time <= 0) { G.time = 0; endGame(false); } }
+  if (G.state === 'play' && CFG.freeAnt) { G.freeT += dt; if (G.freeT >= FREE_EVERY) { G.freeT -= FREE_EVERY; hatchEggs(1); } }
+  const live = G.state === 'ready' || G.state === 'play';
+  stepPhysics(dt);
+  rebuildHeight();
+  homeT -= dt; if (homeT <= 0) { homeT = 0.2; rebuildHome(); }
+  updateObjects(dt);
+  updateSwarms(dt, live);
+  updateAnts(dt);
+  updateBalls(dt);
+  update3DFx(dt);
+  updateFeed(dt);
+}
+function draw() {
+  updateCamera(0);
+  renderAnts();
+  renderer.render(scene, camera);
+  drawOverlay();
+  updateHUD();
+}
+let lastT = performance.now();
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = clamp((now - lastT) / 1000, 0, 0.05); lastT = now;
+  G.shake = Math.max(0, G.shake - dt * 1.4);
+  if (!paused) step(dt);
+  draw();
+}
+
+resetGame();
+requestAnimationFrame(tick);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
+
+// handle for quick balance experiments from the console
+window.swarmSiege = {
+  CFG, G, objects, ants, PHYS, camera, CAM_LOOK, CAM_POS, scene, launcher, BALL_HOME, get readyBall() { return readyBall; }, get goals() { return goals; }, get swarms() { return swarms; }, get holes() { return holes; }, get ballAnts() { return readyBall ? readyBall.ants.length : 0; },
+  fire: (x, z) => fire(new V3(x, 0, z)), reset: () => resetGame(), setLevel: (i) => resetGame(i), get level() { return levelIdx; }, LEVELS,
+  advance(sec, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) step(dt); draw(); },
+  giveBall(n) { for (let i = 0; i < n; i++) addAntToBall(readyBall, true); G.colony += n; },
+  set paused(v) { paused = v; }, get paused() { return paused; },
+  nav: { HM, homeD, homeBlock, hgrid, homeAim, cellOf, cellX, cellZ },
+};
+</script>
+
+</body>
+</html>

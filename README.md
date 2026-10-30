@@ -24,4 +24,8 @@ A rules variant lives at [/v1/](https://keremreboot.github.io/swarm-siege/v1/), 
 
 Its tuning panel adds bite speed, egg value, the number of egg checkpoints, how fast an idle swarm's search grows, and an optional free ant: when it is on, the colony hatches one ant every 15 seconds and its rim fills toward the next one, so a stuck colony can still throw. Its settings are saved separately from the original.
 
-Everything is in `index.html` (and `v1/index.html`); it loads three.js, Google Fonts and (in v1) cannon-es from CDNs.
+## Carry version
+
+An alternate of version 1 lives at [/carry/](https://keremreboot.github.io/swarm-siege/carry/): instead of eating food, ants carry it down one to three ant holes, every piece takes a number of ants to lift, and every piece brought home hatches more ants. It is developed on the `carry` branch (where it replaces `v1/index.html`), and its README there has the full rules. `carry/index.html` here is a copy of that build.
+
+Everything is in `index.html` (and `v1/index.html`, `carry/index.html`); it loads three.js, Google Fonts and (in v1 and carry) cannon-es from CDNs.
