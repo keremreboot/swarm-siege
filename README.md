@@ -34,7 +34,7 @@ On this branch, `v1/index.html` is an alternate of version 1 where food is carri
 - Ants never die. A swarm with nothing it can lift nearby waits 2.5 seconds, then walks to a hole and rejoins the ball.
 - No eating, bites or eggs.
 - Paced for a clear in about 2:05 to 2:15 played well on each level, on the 3:00 clock. Throwing every ball at random food still clears the Picnic in about 2:40.
-- Sweet stacks uses cannon-es's naive broadphase. With sweep-and-prune, the cake's tiers fell through each other as soon as they woke, and the bottom tier was thrown into the air; version 1 on `main` still has that.
+- Sweet stacks uses cannon-es's naive broadphase. With sweep-and-prune, the cake's tiers fell through each other as soon as they woke, and the bottom tier was thrown into the air (version 1 on `main` has the same fix).
 
 The tuning panel swaps bite speed, egg value and checkpoints for carry speed, ants per food and ants needed, and search growth for the wait before heading home. Its settings are saved apart from version 1.
 
