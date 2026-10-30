@@ -1050,7 +1050,9 @@ const PHYS = { on: false, world: null };
 function physicsReset(on) {
   PHYS.on = on; PHYS.world = null; if (!on) return;
   const w = new CANNON.World({ gravity: new CANNON.Vec3(0, -16, 0), allowSleep: true });
-  w.broadphase = new CANNON.SAPBroadphase(w); w.solver.iterations = 14;
+  // the naive broadphase: sweep-and-prune misses the pairs between the wide cake tiers once they wake, and they fall
+  // through each other; a hundred-odd bodies, most asleep, are cheap to check pair by pair
+  w.broadphase = new CANNON.NaiveBroadphase(); w.solver.iterations = 14;
   w.defaultContactMaterial.friction = 0.55; w.defaultContactMaterial.restitution = 0.05;
   const floor = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() }); floor.quaternion.setFromEuler(-Math.PI / 2, 0, 0); w.addBody(floor);
   const cz = (FIELD.z0 + FIELD.z1) / 2, hzF = (FIELD.z1 - FIELD.z0) / 2 + 0.6, hxF = (FIELD.x1 - FIELD.x0) / 2 + 0.6;
